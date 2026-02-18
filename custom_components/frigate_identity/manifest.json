@@ -5,5 +5,5 @@
   "documentation": "https://github.com/awayman/frigate_identity_service",
   "requirements": [],
   "dependencies": ["mqtt"],
-  "codeowners": ["@yourgithub"]
+  "codeowners": ["@awayman"]
 }
