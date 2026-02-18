@@ -1,10 +1,12 @@
 {
   "domain": "frigate_identity",
   "name": "Frigate Identity",
-  "version": "0.1.0",
-  "documentation": "https://github.com/awayman/frigate_identity_service",
-  "homeassistant": "2024.1.0",
+  "codeowners": ["@awayman"],
+  "config_flow": false,
+  "documentation": "https://github.com/awayman/frigate-identity-ha",
   "requirements": [],
+  "version": "0.1.0",
+  "homeassistant": "2024.1.0",
   "dependencies": ["mqtt"],
-  "codeowners": ["@awayman"]
+  "issue_tracker": "https://github.com/awayman/frigate-identity-ha/issues"
 }
