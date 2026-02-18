@@ -1,7 +1,7 @@
 {
   "domain": "frigate_identity",
   "name": "Frigate Identity",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "documentation": "https://github.com/awayman/frigate-identity-ha",
   "homeassistant": "2024.1.0",
   "codeowners": ["@awayman"],
