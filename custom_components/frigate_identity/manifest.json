@@ -5,6 +5,7 @@
   "documentation": "https://github.com/awayman/frigate-identity-ha",
   "homeassistant": "2023.12.0",
   "codeowners": ["@awayman"],
+  "config_flow": false,
   "dependencies": ["mqtt"],
   "requirements": []
 }
