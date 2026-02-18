@@ -1,9 +1,9 @@
 {
   "domain": "frigate_identity",
   "name": "Frigate Identity",
-  "version": "1.0.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/awayman/frigate-identity-ha",
-  "homeassistant": "2024.1.0",
+  "homeassistant": "2023.12.0",
   "codeowners": ["@awayman"],
   "dependencies": ["mqtt"],
   "requirements": []
