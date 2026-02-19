@@ -170,7 +170,14 @@ mqtt:
 
 ## Step 7: Install Blueprints
 
-1. Copy blueprint files to Home Assistant:
+When you install this integration via HACS, blueprints are automatically included! They are located in:
+```
+<config>/custom_components/frigate_identity/blueprints/automation/frigate_identity/
+```
+
+To use the blueprints:
+
+1. **Option A (Recommended)**: Copy blueprint files from the integration directory to:
    ```
    /config/blueprints/automation/frigate_identity/
    ├── child_danger_zone_alert.yaml
@@ -179,9 +186,11 @@ mqtt:
    └── notification_action_handlers.yaml
    ```
 
-2. In HA: **Settings → Automations & Scenes → Blueprints**
+2. **Option B**: Import directly from GitHub using the blueprint import feature
 
-3. Blueprints should appear automatically
+3. In HA: **Settings → Automations & Scenes → Blueprints**
+
+4. Blueprints should appear automatically after copying or importing
 
 ---
 

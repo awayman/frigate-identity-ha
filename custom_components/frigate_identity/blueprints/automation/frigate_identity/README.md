@@ -82,25 +82,38 @@ Handles action button presses from safety alert notifications.
 
 ## Installation
 
-### Method 1: Copy Files
+### Method 1: Via HACS Integration Install (Recommended)
 
-1. Copy blueprint YAML files to your Home Assistant config:
+When you install the Frigate Identity integration via HACS, the blueprints are automatically included!
+
+1. The blueprints are located in:
+   ```
+   <config>/custom_components/frigate_identity/blueprints/automation/frigate_identity/
+   ```
+
+2. Copy the blueprint files to:
    ```
    /config/blueprints/automation/frigate_identity/
    ```
 
-2. Restart Home Assistant
+3. Restart Home Assistant
 
-3. Go to **Settings → Automations & Scenes → Blueprints**
+4. Go to **Settings → Automations & Scenes → Blueprints**
 
-### Method 2: Import from GitHub (Future)
+### Method 2: Import from GitHub
 
-When hosted online, you can import blueprints directly:
+You can import blueprints directly from GitHub:
 
-1. Copy blueprint URL
-2. Settings → Automations & Scenes → Blueprints
-3. Click "Import Blueprint"
-4. Paste URL
+1. Copy the raw blueprint URL from GitHub
+2. Go to **Settings → Automations & Scenes → Blueprints**
+3. Click **"Import Blueprint"**
+4. Paste the URL
+5. Click **"Preview"** then **"Import"**
+
+Example URL format:
+```
+https://raw.githubusercontent.com/awayman/frigate-identity-ha/main/custom_components/frigate_identity/blueprints/automation/frigate_identity/child_danger_zone_alert.yaml
+```
 
 ---
 
