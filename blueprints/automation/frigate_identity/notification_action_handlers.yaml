@@ -1,0 +1,68 @@
+blueprint:
+  name: Frigate Identity - Notification Action Handlers
+  description: >
+    Handle notification actions like "Adult Present" and "View Camera" buttons
+    from safety alert notifications.
+  domain: automation
+  input:
+    manual_supervision_entity:
+      name: Manual Supervision Entity
+      description: Input boolean to toggle when "Adult Present" is pressed
+      selector:
+        entity:
+          domain: input_boolean
+    supervision_duration:
+      name: Supervision Duration
+      description: How long to keep manual supervision active (minutes)
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: minutes
+
+trigger:
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: MARK_SUPERVISED
+  - platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: VIEW_CAMERA
+
+variables:
+  manual_supervision_var: !input manual_supervision_entity
+  duration_var: !input supervision_duration
+
+action:
+  - choose:
+      # Handle "Adult Present" button
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.action == 'MARK_SUPERVISED' }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: "{{ manual_supervision_var }}"
+          - service: notify.mobile_app
+            data:
+              title: "✅ Supervision Acknowledged"
+              message: "Manual supervision active for {{ duration_var }} minutes"
+          - delay:
+              minutes: "{{ duration_var }}"
+          - service: input_boolean.turn_off
+            target:
+              entity_id: "{{ manual_supervision_var }}"
+      
+      # Handle "View Camera" button
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.event.data.action == 'VIEW_CAMERA' }}"
+        sequence:
+          - service: notify.mobile_app
+            data:
+              message: "command_activity"
+              data:
+                intent_action: "android.intent.action.VIEW"
+                intent_uri: "app://ha.main"

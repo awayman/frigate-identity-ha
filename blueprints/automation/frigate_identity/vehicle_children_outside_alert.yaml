@@ -1,0 +1,100 @@
+blueprint:
+  name: Frigate Identity - Vehicle with Children Outside
+  description: >
+    Alert when a vehicle is detected in the driveway and one or more 
+    children are currently outside. Optionally checks gate status.
+  domain: automation
+  input:
+    children_to_monitor:
+      name: Children Names
+      description: List of children names to check (as detected by Frigate Identity)
+      default: ["Alice", "Bob"]
+      selector:
+        object:
+    driveway_camera:
+      name: Driveway Camera Name
+      description: Name of the camera that monitors the driveway
+      default: "driveway"
+      selector:
+        text:
+    gate_sensor:
+      name: Gate Sensor (Optional)
+      description: Binary sensor that indicates if gate is open
+      default: ""
+      selector:
+        entity:
+          domain: binary_sensor
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g., mobile_app_pixel_8)
+      selector:
+        text:
+    alert_priority:
+      name: Escalate Priority if Gate Open
+      description: Gate open = critical, gate closed = high priority
+      default: true
+      selector:
+        boolean:
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: mqtt
+    topic: identity/vehicle/detected
+
+variables:
+  children_var: !input children_to_monitor
+  gate_var: !input gate_sensor
+  driveway_cam: !input driveway_camera
+  notify_service_var: !input notify_service
+
+condition:
+  # Vehicle must be in the driveway camera
+  - condition: template
+    value_template: "{{ trigger.payload_json.camera == driveway_cam }}"
+  # At least one child must be currently detected outside
+  - condition: template
+    value_template: >
+      {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+      {% if not persons %}
+        {{ false }}
+      {% else %}
+        {% set children_outside = children_var | select('in', persons.keys()) | list %}
+        {{ children_outside | length > 0 }}
+      {% endif %}
+
+action:
+  - choose:
+      # Gate open = CRITICAL priority
+      - conditions:
+          - condition: template
+            value_template: "{{ gate_var != '' and is_state(gate_var, 'on') }}"
+        sequence:
+          - service: "notify.{{ notify_service_var }}"
+            data:
+              title: "🚨 CRITICAL: Vehicle + Open Gate!"
+              message: >
+                Vehicle detected in driveway. Children are outside and gate is OPEN!
+              data:
+                priority: critical
+                ttl: 0
+                tag: vehicle_gate_alert
+                actions:
+                  - action: "GATE_CLOSED"
+                    title: "Gate is Closed"
+                  - action: "CHILDREN_SAFE"
+                    title: "Children Are Safe"
+    # Gate closed or not configured = HIGH priority
+    default:
+      - service: "notify.{{ notify_service_var }}"
+        data:
+          title: "⚠️ Vehicle Detected"
+          message: >
+            Vehicle detected in driveway. Children are currently outside.
+          data:
+            priority: high
+            tag: vehicle_alert
+            actions:
+              - action: "CHILDREN_SAFE"
+                title: "Children Are Safe"

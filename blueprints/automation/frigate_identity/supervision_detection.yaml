@@ -1,0 +1,95 @@
+blueprint:
+  name: Frigate Identity - Supervision Detection
+  description: >
+    Create a binary sensor that detects if a child is supervised by checking
+    if any trusted adult is on the same camera within the last 60 seconds.
+  domain: template
+  input:
+    child_name:
+      name: Child Name
+      description: Name of the child to monitor
+      selector:
+        text:
+    trusted_adults:
+      name: Trusted Adults
+      description: List of adult names (as detected by Frigate)
+      default: ["Dad", "Mom"]
+      selector:
+        object:
+    supervision_timeout:
+      name: Supervision Timeout
+      description: How many seconds since adult was seen to still consider supervised
+      default: 60
+      selector:
+        number:
+          min: 10
+          max: 300
+          unit_of_measurement: seconds
+    manual_override_entity:
+      name: Manual Override Entity (Optional)
+      description: Input boolean to manually mark child as supervised
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
+
+binary_sensor:
+  - name: "{{ child_name }} Supervised"
+    unique_id: "{{ child_name.lower() }}_supervised"
+    state: >
+      {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+      {% if not persons or child_name not in persons %}
+        {{ false }}
+      {% else %}
+        {% set child = persons[child_name] %}
+        {% set child_camera = child.camera %}
+        {% set child_time = as_timestamp(child.last_seen) %}
+        {% set now = as_timestamp(now()) %}
+        
+        {# Check if any adult is on same camera within timeout #}
+        {% set adults = trusted_adults %}
+        {% set supervised = namespace(value=false) %}
+        
+        {% for adult in adults %}
+          {% if adult in persons %}
+            {% set adult_data = persons[adult] %}
+            {% set adult_camera = adult_data.camera %}
+            {% set adult_time = as_timestamp(adult_data.last_seen) %}
+            
+            {% if child_camera == adult_camera and (now - adult_time) < supervision_timeout %}
+              {% set supervised.value = true %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        
+        {# Allow manual override #}
+        {% if manual_override_entity != '' %}
+          {{ supervised.value or is_state(manual_override_entity, 'on') }}
+        {% else %}
+          {{ supervised.value }}
+        {% endif %}
+      {% endif %}
+    device_class: presence
+    attributes:
+      supervising_adult: >
+        {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+        {% if not persons or child_name not in persons %}
+          null
+        {% else %}
+          {% set child = persons[child_name] %}
+          {% set child_camera = child.camera %}
+          {% set now = as_timestamp(now()) %}
+          {% set adults = trusted_adults %}
+          
+          {% for adult in adults %}
+            {% if adult in persons %}
+              {% set adult_data = persons[adult] %}
+              {% set adult_camera = adult_data.camera %}
+              {% set adult_time = as_timestamp(adult_data.last_seen) %}
+              
+              {% if child_camera == adult_camera and (now - adult_time) < supervision_timeout %}
+                {{ adult }}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}

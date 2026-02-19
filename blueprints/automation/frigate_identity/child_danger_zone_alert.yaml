@@ -1,0 +1,85 @@
+blueprint:
+  name: Frigate Identity - Child Danger Zone Alert
+  description: >
+    Alert when a child enters a dangerous zone (street, neighbor's yard, etc.)
+    without adult supervision. Includes snapshot in notification.
+  domain: automation
+  input:
+    child_name:
+      name: Child Name
+      description: Name of the child to monitor (must match Frigate face recognition name)
+      selector:
+        text:
+    dangerous_zones:
+      name: Dangerous Zones
+      description: List of Frigate zones that are dangerous (e.g., street, neighbor_yard)
+      default: ["street", "neighbor_yard"]
+      selector:
+        object:
+    supervision_sensor:
+      name: Supervision Sensor (Optional)
+      description: Binary sensor that indicates if child is supervised
+      default: ""
+      selector:
+        entity:
+          domain: binary_sensor
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g., mobile_app_pixel_8)
+      selector:
+        text:
+    alert_cooldown:
+      name: Alert Cooldown
+      description: Minimum time between duplicate alerts (seconds)
+      default: 60
+      selector:
+        number:
+          min: 10
+          max: 300
+          unit_of_measurement: seconds
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: mqtt
+    topic: "identity/person/{{ child_name }}"
+
+variables:
+  child_name_var: !input child_name
+  dangerous_zones_var: !input dangerous_zones
+  supervision_sensor_var: !input supervision_sensor
+  notify_service_var: !input notify_service
+
+condition:
+  - condition: template
+    value_template: >
+      {% set payload = trigger.payload_json %}
+      {% set zones = payload.get('frigate_zones', []) %}
+      {% set dangerous = dangerous_zones_var %}
+      {{ zones | select('in', dangerous) | list | length > 0 }}
+  - condition: or
+    conditions:
+      - condition: template
+        value_template: "{{ supervision_sensor_var == '' }}"
+      - condition: state
+        entity_id: !input supervision_sensor
+        state: "off"
+
+action:
+  - service: "notify.{{ notify_service_var }}"
+    data:
+      title: "⚠️ Child Safety Alert"
+      message: >
+        {{ child_name_var }} detected in dangerous zone: {{ trigger.payload_json.frigate_zones | join(', ') }}
+      data:
+        image: "{{ trigger.payload_json.snapshot_url }}"
+        tag: "child_safety_{{ child_name_var }}"
+        priority: high
+        actions:
+          - action: "MARK_SUPERVISED"
+            title: "Adult Present"
+          - action: "VIEW_CAMERA"
+            title: "View Camera"
+  
+  - delay: !input alert_cooldown

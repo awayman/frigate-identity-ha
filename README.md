@@ -1,24 +1,60 @@
 # Frigate Identity - Home Assistant Integration
 
-A Home Assistant custom component that integrates with the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) to consume face identity events and expose them as sensors in Home Assistant.
+A Home Assistant custom component that integrates with the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) to provide person identification continuity and location tracking.
 
 ## Features
 
-- Monitors Frigate identity events via MQTT
-- Exposes detected faces and identified persons as Home Assistant sensors
-- Supports propagation of identities to weaker cameras using ReID heuristics
-- Zero configuration after setup (uses existing MQTT broker)
+- **Real-time person identification** - Uses Frigate's facial recognition as primary source
+- **ReID continuity** - Maintains identity when faces are not visible
+- **Per-person tracking** - Track location, zones, and confidence for each person
+- **Live snapshots** - MQTT camera entities for real-time person snapshots
+- **Vehicle detection** - Safety alerts when vehicles detected with children outside
+- **Supervision tracking** - Monitor if children are supervised by adults
+- **Zone-aware** - Integrates with Frigate zones for safety monitoring
+- **Two-tier architecture** - Fast MQTT snapshots + accurate API embeddings
 
 ## Prerequisites
 
 Before using this integration, you must have:
 
-1. **Home Assistant** (latest version)
+1. **Home Assistant** (2023.x or later)
 2. **MQTT Broker** configured in Home Assistant (e.g., Mosquitto)
-3. **Frigate Identity Service** running separately
-   - Consumes Frigate MQTT events
-   - Publishes identity events to your MQTT broker
-   - See [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) for deployment instructions
+3. **Frigate** with facial recognition configured
+4. **Frigate Identity Service** running and connected to MQTT
+   - See [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) for deployment
+
+## Quick Start
+
+📘 **New to Home Assistant configuration?** Start here: [QUICK_START.md](QUICK_START.md)
+
+For complete setup, see [CONFIGURATION_EXAMPLES.md](CONFIGURATION_EXAMPLES.md) which includes:
+- MQTT camera entities for live person snapshots
+- Template sensors for per-person tracking
+- Supervision detection sensors
+- Safety automation examples
+- Dashboard configuration
+- Frigate MQTT snapshot configuration
+
+## Blueprints
+
+This integration includes **Home Assistant Blueprints** for easy automation setup:
+
+📋 **Available Blueprints** (in `blueprints/automation/frigate_identity/`):
+
+1. **Child Danger Zone Alert** - Alert when child enters dangerous zone without supervision
+2. **Vehicle with Children Outside** - Alert when vehicle detected and children are outside
+3. **Supervision Detection** - Binary sensor to track if child is supervised
+4. **Notification Action Handlers** - Handle "Adult Present" and "View Camera" buttons
+
+### Using Blueprints
+
+1. Copy blueprint files to `/config/blueprints/automation/frigate_identity/`
+2. Restart Home Assistant
+3. Go to **Settings → Automations & Scenes → Blueprints**
+4. Click **"Create Automation"** → **"Start with a blueprint"**
+5. Select a Frigate Identity blueprint and configure
+
+No YAML editing required!
 
 ## Installation
 
@@ -44,22 +80,16 @@ Before using this integration, you must have:
 
 ## Configuration
 
-Add this to your `configuration.yaml`:
+This integration requires minimal configuration. After installation, it will automatically:
 
-```yaml
-mqtt:
-  broker: 192.168.1.100  # Your MQTT broker address
-  port: 1883
-  
-frigate_identity:
-  mqtt_topic_prefix: frigate/identity  # Topic prefix for identity events
-```
+1. Subscribe to `identity/person/#` MQTT topics
+2. Create two sensors:
+   - `sensor.frigate_identity_last_person` - Most recently detected person
+   - `sensor.frigate_identity_all_persons` - All currently tracked persons
 
-### Configuration Options
+**No YAML configuration required!** Simply install the integration and it will start working.
 
-| Option | Type | Required | Default | Description |
-|--------|------|----------|---------|-------------|
-| `mqtt_topic_prefix` | string | No | `frigate/identity` | MQTT topic prefix for identity events |
+For advanced configuration (per-person sensors, supervision tracking, safety automations), see [CONFIGURATION_EXAMPLES.md](CONFIGURATION_EXAMPLES.md).
 
 ## Setup Instructions
 
@@ -94,11 +124,27 @@ Ensure your MQTT broker is accessible and properly configured in Home Assistant.
 
 ## MQTT Topics
 
-The integration publishes to the following topics:
+The integration subscribes to and publishes to the following topics:
 
-- `frigate/identity/detected_faces` - Detected faces
-- `frigate/identity/identified_persons` - Identified persons
-- `frigate/identity/propagated_identities` - Propagated identities across cameras
+**Identity Service → Home Assistant:**
+- `identity/person/{person_id}` - Person identification events with location, zones, confidence
+- `identity/snapshots/{person_id}` - Real-time person snapshots (JPEG)
+- `identity/snapshots/{person_id}/metadata` - Snapshot correlation metadata
+- `identity/vehicle/detected` - Vehicle detection events
+
+**Data Format:**
+```json
+{
+  "person_id": "Alice",
+  "camera": "backyard",
+  "confidence": 0.94,
+  "source": "facial_recognition",
+  "frigate_zones": ["safe_play_area"],
+  "event_id": "1708286380-abc",
+  "timestamp": 1708286400000,
+  "snapshot_url": "http://frigate:5000/api/events/1708286380-abc/thumbnail.jpg?crop=1"
+}
+```
 
 ## Troubleshooting
 

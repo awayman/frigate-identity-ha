@@ -1,0 +1,133 @@
+# Frigate Identity - Example Dashboard Configuration
+# Add this to your Home Assistant Lovelace dashboard
+
+title: Family Safety Monitor
+icon: mdi:account-group
+
+cards:
+  # Overview Card
+  - type: markdown
+    content: |
+      # 👨‍👩‍👧‍👦 Family Location Tracker
+      Real-time person detection and safety monitoring
+  
+  # Alice Monitoring Card
+  - type: vertical-stack
+    cards:
+      - type: picture-entity
+        entity: camera.alice_snapshot
+        name: Alice (Age 5)
+        show_state: false
+        camera_view: live
+      
+      - type: entities
+        title: Alice Status
+        entities:
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Location
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Alice' in persons %}
+                {{ persons['Alice'].camera }}
+              {% else %}
+                Not detected
+              {% endif %}
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Zones
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Alice' in persons %}
+                {{ persons['Alice'].frigate_zones | join(', ') }}
+              {% else %}
+                -
+              {% endif %}
+          - entity: binary_sensor.alice_supervised
+            name: Supervised
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Confidence
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Alice' in persons %}
+                {{ (persons['Alice'].confidence * 100) | round(0) }}%
+              {% else %}
+                -
+              {% endif %}
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Last Seen
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Alice' in persons %}
+                {{ relative_time(strptime(persons['Alice'].last_seen, '%Y-%m-%dT%H:%M:%S.%f')) }} ago
+              {% else %}
+                -
+              {% endif %}
+  
+  # Bob Monitoring Card
+  - type: vertical-stack
+    cards:
+      - type: picture-entity
+        entity: camera.bob_snapshot
+        name: Bob (Age 10)
+        show_state: false
+        camera_view: live
+      
+      - type: entities
+        title: Bob Status
+        entities:
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Location
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Bob' in persons %}
+                {{ persons['Bob'].camera }}
+              {% else %}
+                Not detected
+              {% endif %}
+          - entity: sensor.frigate_identity_all_persons
+            type: custom:template-entity-row
+            name: Zones
+            state: >
+              {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+              {% if persons and 'Bob' in persons %}
+                {{ persons['Bob'].frigate_zones | join(', ') }}
+              {% else %}
+                -
+              {% endif %}
+          - entity: binary_sensor.bob_supervised
+            name: Supervised
+  
+  # Summary Card
+  - type: entities
+    title: System Status
+    entities:
+      - entity: sensor.frigate_identity_all_persons
+        name: Total Persons Detected
+      - entity: sensor.frigate_identity_last_person
+        name: Last Detection
+      - entity: input_boolean.manual_supervision
+        name: Manual Supervision Override
+  
+  # Manual Controls
+  - type: entities
+    title: Manual Controls
+    entities:
+      - entity: input_boolean.manual_supervision
+        name: Mark Children as Supervised
+      - entity: input_boolean.front_gate_open
+        name: Front Gate Status
+  
+  # Vehicle Detection
+  - type: conditional
+    conditions:
+      - entity: camera.driveway_vehicle
+        state_not: unavailable
+    card:
+      type: picture-entity
+      entity: camera.driveway_vehicle
+      name: Vehicle Detected
+      show_state: true
