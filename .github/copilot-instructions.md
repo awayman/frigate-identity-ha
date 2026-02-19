@@ -93,10 +93,10 @@ The integration subscribes to `identity/person/#` topics with this data format:
 
 ## Testing and Validation
 
-### No Automated Tests
-- This repository does **not** have automated tests
-- All changes should be manually validated in a Home Assistant environment
-- Test with actual MQTT messages from Frigate Identity Service
+### Testing Approach
+- This repository uses **manual testing** in a Home Assistant environment
+- All changes should be validated with actual MQTT messages from Frigate Identity Service
+- Testing requires a running Home Assistant instance with MQTT configured
 
 ### Manual Testing Checklist
 When making changes, verify:
