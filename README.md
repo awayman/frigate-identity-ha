@@ -39,7 +39,7 @@ For complete setup, see [CONFIGURATION_EXAMPLES.md](CONFIGURATION_EXAMPLES.md) w
 
 This integration includes **Home Assistant Blueprints** for easy automation setup:
 
-📋 **Available Blueprints** (in `blueprints/automation/frigate_identity/`):
+📋 **Available Blueprints** (in `custom_components/frigate_identity/blueprints/automation/frigate_identity/`):
 
 1. **Child Danger Zone Alert** - Alert when child enters dangerous zone without supervision
 2. **Vehicle with Children Outside** - Alert when vehicle detected and children are outside
@@ -48,9 +48,14 @@ This integration includes **Home Assistant Blueprints** for easy automation setu
 
 ### Using Blueprints
 
-1. Copy blueprint files to `/config/blueprints/automation/frigate_identity/`
-2. Restart Home Assistant
-3. Go to **Settings → Automations & Scenes → Blueprints**
+When you install this integration via HACS, the blueprints are automatically included in your installation. To use them:
+
+1. Go to **Settings → Automations & Scenes → Blueprints**
+2. Click **"Import Blueprint"**
+3. Use the blueprint URL from the repository, or copy the blueprint files from:
+   `<config>/custom_components/frigate_identity/blueprints/automation/frigate_identity/`
+   to:
+   `/config/blueprints/automation/frigate_identity/`
 4. Click **"Create Automation"** → **"Start with a blueprint"**
 5. Select a Frigate Identity blueprint and configure
 
