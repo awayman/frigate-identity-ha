@@ -94,6 +94,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import urllib.error
@@ -451,6 +452,25 @@ def _build_template_sensors(
 # Dashboard cards
 # ---------------------------------------------------------------------------
 
+_VALID_CAMERA_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _person_camera(
+    person: str,
+    persons_meta: dict[str, dict[str, Any]],
+    camera_map: dict[str, str],
+) -> str:
+    """Return the Frigate camera name for *person*.
+
+    Resolution order:
+    1. ``camera`` field in *persons_meta* entry
+    2. CLI ``--cameras`` mapping (*camera_map*)
+    3. Slugified person name as a last-resort fallback
+    """
+    meta_cam = str(persons_meta.get(person, {}).get("camera", "") or "")
+    return meta_cam or camera_map.get(person, _slug(person))
+
+
 def _snapshot_entity(person: str, snapshot_source: str, camera_map: dict[str, str]) -> str:
     """Return the HA entity ID used for the snapshot card."""
     slug = _slug(person)
@@ -549,9 +569,8 @@ def _area_section(
         }
     ]
 
-    # Camera feed row (deduplicated, preserving order)
-    seen_cams: set[str] = set()
-    unique_cams = [c for c in cameras_in_area if not (c in seen_cams or seen_cams.add(c))]  # type: ignore[func-returns-value]
+    # Camera feed row — deduplicated, order preserved
+    unique_cams: list[str] = list(dict.fromkeys(cameras_in_area))
     if unique_cams:
         feed_cards = [_camera_feed_card(c) for c in unique_cams]
         cards.append(
@@ -623,8 +642,7 @@ def _build_view(
         # Determine each person's area (via their camera entry in area_map)
         person_area: dict[str, str] = {}
         for person in persons:
-            meta = persons_meta.get(person, {})
-            cam = str(meta.get("camera", "")) or camera_map.get(person, _slug(person))
+            cam = _person_camera(person, persons_meta, camera_map)
             person_area[person] = area_map.get(cam, "")
 
         # Collect ordered unique area names (preserving encounter order)
@@ -637,12 +655,8 @@ def _build_view(
                 ordered_areas.append(a)
 
         for area in ordered_areas:
-            # Cameras in this area (from persons assigned to it)
-            cams = [
-                str(persons_meta.get(p, {}).get("camera", "")
-                    or camera_map.get(p, _slug(p)))
-                for p in persons if person_area[p] == area
-            ]
+            cams = [_person_camera(p, persons_meta, camera_map)
+                    for p in persons if person_area[p] == area]
             ppl = [p for p in persons if person_area[p] == area]
             body_cards.extend(
                 _area_section(area, cams, ppl, snapshot_source, camera_map, persons_meta)
@@ -652,9 +666,7 @@ def _build_view(
         unassigned = [p for p in persons if not person_area[p]]
         if unassigned:
             unassigned_cams = [
-                str(persons_meta.get(p, {}).get("camera", "")
-                    or camera_map.get(p, _slug(p)))
-                for p in unassigned
+                _person_camera(p, persons_meta, camera_map) for p in unassigned
             ]
             body_cards.extend(
                 _area_section(
@@ -893,10 +905,18 @@ def _fetch_ha_camera_areas(
     """
     if not cameras:
         return {}
+    # Validate camera names before interpolating into the Jinja2 template string.
+    invalid = [c for c in cameras if not _VALID_CAMERA_NAME_RE.match(c)]
+    if invalid:
+        print(f"  ⚠️  Skipping cameras with unsupported name characters: {invalid}",
+              file=sys.stderr)
+    safe_cameras = [c for c in cameras if _VALID_CAMERA_NAME_RE.match(c)]
+    if not safe_cameras:
+        return {}
     # Build a Jinja2 template that outputs a JSON-parseable object.
     entries = ", ".join(
         f'"{cam}": (area_name("camera.{cam}") | default("", true))'
-        for cam in cameras
+        for cam in safe_cameras
     )
     template = "{{ {" + entries + "} | tojson }}"
     raw = _ha_request("POST", ha_url, ha_token, "/api/template",
@@ -979,15 +999,14 @@ def generate(
     ha_fetched_areas: dict[str, str] = {}
     if ha_url and ha_token:
         unique_cameras = list(dict.fromkeys(
-            str(persons_meta.get(p, {}).get("camera", "") or camera_map.get(p, _slug(p)))
+            _person_camera(p, persons_meta, camera_map)
             for p in persons
-            if persons_meta.get(p, {}).get("camera") or camera_map.get(p)
         ))
         if unique_cameras:
             print("  Fetching camera area assignments from Home Assistant...")
             ha_fetched_areas = _fetch_ha_camera_areas(unique_cameras, ha_url, ha_token)
             if ha_fetched_areas:
-                print(f"  ✅ Areas resolved: { {c: a for c, a in ha_fetched_areas.items()} }")
+                print(f"  ✅ Resolved {len(ha_fetched_areas)} camera area(s): {ha_fetched_areas}")
             else:
                 print("  ℹ️  No HA area assignments found — using flat dashboard layout.")
 

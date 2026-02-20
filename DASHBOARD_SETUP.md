@@ -340,15 +340,106 @@ Repeat for each child with their own zone list.
 
 ```
 Step 1  ✅  Install integration (HACS or manual)
-Step 2  ✅  Add camera_zones section to persons.yaml (for multi-camera yards)
+Step 2  ✅  Assign Frigate cameras to HA Areas (Settings → Areas & Zones)
 Step 3  ✅  Run generate_dashboard.py with --ha-config-dir + --ha-url + --ha-token + --copy-blueprints + --restart
-Step 4  ✅  Dashboard live at /lovelace/frigate-identity
+Step 4  ✅  Dashboard live at /lovelace/frigate-identity — grouped by HA Area
 Step 5  🔲  Create "Manual Supervision" helper (Settings → Helpers → Toggle)
 Step 6  🔲  Create Notification Action Handlers automation (blueprint)
 Step 7  🔲  Edit danger_zone_automations.yaml — replace notify.notify with your service
-Step 8  🔲  (Optional) Create Unknown Person Alert for outdoor cameras
-Step 9  🔲  (Optional) Create Vehicle with Children Outside alert
+Step 8  🔲  (Optional) Install AppDaemon app for fully automatic updates (see Part 7)
+Step 9  🔲  (Optional) Create Unknown Person Alert for outdoor cameras
+Step 10 🔲  (Optional) Create Vehicle with Children Outside alert
 ```
+
+---
+
+## Part 7 – AppDaemon: Fully Automatic Updates
+
+Once the initial setup is done, the **AppDaemon app** keeps everything
+up-to-date without any manual intervention:
+
+| Trigger | What happens |
+|---|---|
+| HA starts | Full regeneration run |
+| Camera Area changed in HA UI | Dashboard re-grouped automatically (10 s debounce) |
+| `persons.yaml` saved | New persons/zones picked up automatically (30 s poll) |
+| Daily at 03:00 | Full refresh to catch any drift |
+
+### Prerequisites
+
+1. **AppDaemon add-on** installed from the Home Assistant Community Add-ons repository:
+   Settings → Add-ons → Add-on Store → search "AppDaemon"
+2. The add-on must be configured with a long-lived access token in
+   `/config/appdaemon/appdaemon.yaml`
+
+### Installation
+
+**1. Copy the app files into the AppDaemon apps directory:**
+
+```bash
+cp appdaemon/apps/frigate_identity_dashboard.py /config/appdaemon/apps/
+cp appdaemon/apps/requirements.txt /config/appdaemon/apps/
+```
+
+**2. Configure the app in `/config/appdaemon/apps/apps.yaml`:**
+
+```yaml
+frigate_identity:
+  module: frigate_identity_dashboard
+  class: FrigateIdentityDashboard
+  persons_file: /config/persons.yaml
+  output_dir: /config/frigate_identity
+  ha_config_dir: /config
+  ha_url: http://localhost:8123
+  ha_token: !secret ha_long_lived_token
+  snapshot_source: mqtt
+  copy_blueprints: true
+  auto_restart: false        # set to true for the very first run only
+```
+
+Add your token to `/config/secrets.yaml`:
+```yaml
+ha_long_lived_token: eyJ...your_token_here...
+```
+
+**3. Restart the AppDaemon add-on.**  The app runs immediately and logs to
+the AppDaemon add-on log (visible under Add-ons → AppDaemon → Log).
+
+### Workflow after initial setup
+
+```
+You change a camera's Area in HA UI
+       ↓  (area_registry_updated event fired)
+       ↓  (10 s debounce)
+AppDaemon app calls generate()
+       ↓
+New dashboard.yaml with updated area grouping
+       ↓
+Lovelace view pushed to HA automatically
+       ↓
+Dashboard refreshed — no manual steps
+```
+
+```
+You add a new person to persons.yaml
+       ↓  (file mtime changed, detected within 30 s)
+AppDaemon app calls generate()
+       ↓
+New sensors, cameras, automations, and dashboard written
+       ↓
+HA restart needed (set auto_restart: true or restart manually)
+       ↓
+New person appears in dashboard
+```
+
+### Tuning options
+
+| Config key | Default | Description |
+|---|---|---|
+| `auto_restart` | `false` | Restart HA after generation. Enable for the first run, disable after. |
+| `debounce_seconds` | `10` | Seconds to wait after last event before regenerating |
+| `file_poll_interval` | `30` | How often (seconds) to check `persons.yaml` for changes |
+| `daily_refresh_time` | `"03:00"` | Daily full-refresh time (HH:MM local) |
 
 ---
 
@@ -381,7 +472,7 @@ The entities were not created. Check:
    camera to an area in HA, or add a `camera_zones` override in `persons.yaml`
 3. If using `camera_zones` overrides, verify the camera names in the mapping
    match the Frigate camera names exactly (case-sensitive)
-4. Re-run the generator after making changes and restart HA
+4. Re-run the generator (or wait for AppDaemon to pick up the change) and restart HA
 
 ### Danger zone alert not firing
 
@@ -392,6 +483,14 @@ The entities were not created. Check:
    the expected zone name
 3. Check the automation trace in HA for which condition failed
 
+### AppDaemon app not regenerating
+
+1. Check the AppDaemon add-on log for errors (Add-ons → AppDaemon → Log)
+2. Verify `generator_script` path points to `generate_dashboard.py`
+   (default: `/config/custom_components/frigate_identity/examples/generate_dashboard.py`)
+3. Verify `ha_token` is set correctly in `secrets.yaml`
+4. Restart the AppDaemon add-on to trigger an immediate regeneration run
+
 ### Dashboard push failed (HA YAML Lovelace mode)
 
 If you see "HA may be in YAML Lovelace mode", your Lovelace is configured via
@@ -401,8 +500,9 @@ If you see "HA may be in YAML Lovelace mode", your Lovelace is configured via
 ### Blueprint not appearing in HA
 
 1. File must be in `/config/blueprints/automation/frigate_identity/`
-   (re-run with `--copy-blueprints` or copy manually)
+   (re-run with `--copy-blueprints` or set `copy_blueprints: true` in AppDaemon config)
 2. No HA restart needed — blueprints are hot-loaded
 3. Check for YAML syntax errors: **Developer Tools → Template** → paste the
    blueprint YAML to check for errors
+
 
