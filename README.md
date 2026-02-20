@@ -66,6 +66,8 @@ No YAML editing required!
 
 The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard** for any set of tracked persons with a single command.
 
+For **automatic dashboard regeneration** whenever your `persons.yaml` or camera areas change, see the optional [AppDaemon automation setup](DASHBOARD_SETUP.md#part-7--appdaemon-fully-automatic-updates) in [DASHBOARD_SETUP.md](DASHBOARD_SETUP.md).
+
 ### Using `persons.yaml` from the Identity Service
 
 If you already have the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) configured, point the generator directly at its `persons.yaml` — no need to retype names:
