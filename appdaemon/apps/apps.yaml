@@ -1,0 +1,69 @@
+# AppDaemon apps configuration for Frigate Identity
+#
+# Copy this file to /config/appdaemon/apps/apps.yaml (or merge into your
+# existing apps.yaml).  Requires the AppDaemon add-on
+# (https://github.com/hassio-addons/repository) and pyyaml (see requirements.txt).
+#
+# Store your long-lived access token in /config/secrets.yaml:
+#   ha_long_lived_token: eyJ...your_token...
+#
+# Create the token at: Home Assistant → Profile → Security →
+# Long-Lived Access Tokens → Create Token
+
+frigate_identity:
+  module: frigate_identity_dashboard
+  class: FrigateIdentityDashboard
+
+  # ── Required ──────────────────────────────────────────────────────────────
+
+  # Path to the Frigate Identity Service persons.yaml
+  persons_file: /config/persons.yaml
+
+  # Long-lived HA access token for area lookup and Lovelace push
+  ha_token: !secret ha_long_lived_token
+
+  # ── Output ────────────────────────────────────────────────────────────────
+
+  # Directory where generated YAML files are written
+  output_dir: /config/frigate_identity
+
+  # HA config directory — the app writes packages/frigate_identity.yaml here
+  # so HA automatically loads sensors, cameras, and automations.
+  ha_config_dir: /config
+
+  # ── HA connection ─────────────────────────────────────────────────────────
+
+  # HA base URL — used to fetch camera Area assignments and push Lovelace
+  ha_url: http://localhost:8123
+
+  # ── Generation options ────────────────────────────────────────────────────
+
+  # How to source the bounded snapshot image:
+  #   mqtt (default) | frigate_api | frigate_integration
+  snapshot_source: mqtt
+
+  # Copy blueprint YAML files to /config/blueprints/automation/frigate_identity/
+  copy_blueprints: true
+
+  # Automatically restart HA after the first generation so new sensor and
+  # camera entities are loaded.  Set to false after the initial setup —
+  # subsequent runs only update the dashboard and automations (no restart needed).
+  auto_restart: false
+
+  # ── Scheduling ────────────────────────────────────────────────────────────
+
+  # Daily full-refresh time (HH:MM local time, default 03:00)
+  daily_refresh_time: "03:00"
+
+  # Debounce: wait this many seconds after the last triggering event before
+  # running generation (prevents duplicate runs on bulk area changes)
+  debounce_seconds: 10
+
+  # How often to poll persons.yaml for file changes, in seconds
+  file_poll_interval: 30
+
+  # ── Advanced ──────────────────────────────────────────────────────────────
+
+  # Override the path to generate_dashboard.py if not installed via HACS.
+  # Default: /config/custom_components/frigate_identity/examples/generate_dashboard.py
+  # generator_script: /config/examples/generate_dashboard.py

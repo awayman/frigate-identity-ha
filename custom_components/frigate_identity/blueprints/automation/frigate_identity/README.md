@@ -44,20 +44,36 @@ Alerts when a vehicle is detected in the driveway while children are currently o
 
 ---
 
-### 3. Supervision Detection
+### 3. Supervision Detection *(HA Area-aware)*
 **File:** `supervision_detection.yaml`
 
-Creates a binary sensor that indicates if a child is currently supervised by checking if any trusted adult is on the same camera.
+Creates a binary sensor that indicates if a child is currently supervised.
+
+Zone resolution uses a three-level priority:
+1. **Explicit override** (`camera_zones_override` input) — for cameras without an HA Area
+2. **HA Area** — `area_name('camera.<name>')` resolved automatically at runtime
+3. **Camera name fallback** — same-camera supervision only
+
+**If your Frigate cameras are already assigned to Areas in Home Assistant
+(Settings → Areas & Zones), no extra configuration is needed** — the sensor
+resolves zones from HA automatically.
+
+> **Why not Frigate zones?** Frigate zones are pixel-regions scoped to a single
+> camera.  They are not shared across cameras, so they cannot be used for
+> cross-camera supervision checks.  HA Areas are the correct mechanism.
 
 **Inputs:**
 - Child name
 - List of trusted adults
-- Supervision timeout (seconds)
+- Camera Zone Overrides (dict, default `{}`; only needed for cameras not in an HA Area)
+- Supervision timeout (seconds, default 60)
 - Optional manual override entity
 
 **Features:**
-- Automatically detects adult proximity
-- Configurable timeout (default 60 seconds)
+- Automatically uses HA Area assignments for cross-camera supervision
+- `camera_zones_override` for cameras without HA Areas
+- Falls back to same-camera matching when neither source provides a zone
+- Configurable timeout
 - Manual override option
 - Shows supervising adult in attributes
 
@@ -77,6 +93,27 @@ Handles action button presses from safety alert notifications.
 - Auto-disables after configured duration
 - "View Camera" opens Home Assistant app
 - Confirmation notifications
+
+---
+
+### 5. Unknown Person Alert
+**File:** `unknown_person_alert.yaml`
+
+Alerts when a person is detected with confidence below a threshold,
+indicating someone the system could not identify clearly.
+
+**Inputs:**
+- Confidence threshold (default 0.5)
+- Known persons ignore list
+- Cameras to monitor (empty = all)
+- Notification service
+- Alert cooldown (seconds)
+
+**Features:**
+- Fires on any low-confidence MQTT identity event
+- Ignore list prevents false positives for household members in poor conditions
+- Snapshot image included in notification
+- Action buttons: "It's Someone I Know" / "View Camera"
 
 ---
 
