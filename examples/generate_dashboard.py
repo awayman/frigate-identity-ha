@@ -128,7 +128,7 @@ def _slug(name: str) -> str:
 
 def load_persons_yaml(
     path: str,
-) -> tuple[list[str], dict[str, str], dict[str, dict[str, Any]]]:
+) -> tuple[list[str], dict[str, str], dict[str, dict[str, Any]], dict[str, str]]:
     """Load person names and metadata from a Frigate Identity Service
     ``persons.yaml`` file.
 
@@ -139,24 +139,36 @@ def load_persons_yaml(
             role: child
             age: 5
             requires_supervision: true
-            dangerous_zones: [street, neighbor_yard]
+            dangerous_zones: [near_fence, street_view]
             camera: backyard   # optional – used for frigate_integration mode
           Dad:
             role: trusted_adult
             can_supervise: true
             camera: driveway   # optional
 
+        # Optional: map each Frigate camera to a logical supervision zone.
+        # Cameras assigned the same zone name are treated as co-located so an
+        # adult on camera A is considered supervising a child on camera B when
+        # both cameras map to the same zone.  Frigate zones are per-camera and
+        # cannot be used for this cross-camera check.
+        camera_zones:
+          backyard: back_yard
+          patio: back_yard
+          front_door: front_entry
+          driveway: front_entry
+
     Returns
     -------
     persons : list[str]
         Person names in file order.
     camera_map : dict[str, str]
-        Mapping of person name → camera name, populated from any ``camera``
-        fields found in the YAML.  Empty dict if none are present.
+        Mapping of person name → camera name (for ``frigate_integration`` mode).
     persons_meta : dict[str, dict[str, Any]]
-        Full attribute dict per person (role, age, requires_supervision,
-        can_supervise, dangerous_zones, …).  Used to generate supervision
-        sensors and danger-zone automations.
+        Full attribute dict per person (role, age, requires_supervision, …).
+    camera_zones : dict[str, str]
+        Mapping of Frigate camera name → logical supervision zone name.
+        Empty dict when the section is absent (supervision falls back to
+        same-camera matching).
     """
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -192,7 +204,14 @@ def load_persons_yaml(
         if attrs_dict.get("camera"):
             camera_map[name] = str(attrs_dict["camera"])
 
-    return persons, camera_map, persons_meta
+    raw_cz = data.get("camera_zones")
+    camera_zones: dict[str, str] = (
+        {str(k): str(v) for k, v in raw_cz.items()}
+        if isinstance(raw_cz, dict)
+        else {}
+    )
+
+    return persons, camera_map, persons_meta, camera_zones
 
 
 
@@ -215,42 +234,41 @@ def _is_adult(meta: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 def _build_supervision_binary_sensor(
-    child: str, adults: list[str]
+    child: str, adults: list[str], camera_zones: dict[str, str]
 ) -> dict[str, Any]:
     """Build a HA template binary sensor tracking whether *child* is supervised.
 
-    A child is considered supervised when any adult in *adults* was seen within
-    the last 60 seconds AND either:
+    Each camera is mapped to a logical supervision zone via *camera_zones*
+    (e.g. ``{'backyard': 'back_yard', 'patio': 'back_yard'}``).  An adult
+    is considered to be supervising the child when both were seen within the
+    last 60 seconds **and** their cameras resolve to the **same zone**.
 
-    * shares the **same Frigate camera** as the child, OR
-    * shares **at least one active Frigate zone** with the child.
+    When *camera_zones* is empty the zone of a camera is its own name, which
+    means supervision falls back to requiring the same camera — exactly the
+    original behaviour.
 
-    The zone-based check is critical for large yards with multiple cameras
-    covering the same physical area: an adult visible on camera B can still be
-    supervising a child visible on camera A if they are both in the same zone.
+    Note: Frigate zones are pixel-regions scoped to a single camera and cannot
+    be used for cross-camera supervision checks.  Use *camera_zones* instead.
     """
     slug = _slug(child)
     adults_repr = repr(adults)
+    camera_zones_repr = repr(camera_zones)
     state = _LiteralStr(
         "{% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}\n"
         f"{{% if not persons or '{child}' not in persons %}}\n"
         "  {{ false }}\n"
         "{% else %}\n"
         f"  {{% set child_camera = persons['{child}'].camera %}}\n"
-        f"  {{% set child_zones = persons['{child}'].frigate_zones %}}\n"
+        f"  {{% set camera_zones = {camera_zones_repr} %}}\n"
+        "  {% set child_zone = camera_zones.get(child_camera, child_camera) %}\n"
         "  {% set now = as_timestamp(now()) %}\n"
         "  {% set supervised = namespace(value=false) %}\n"
         f"  {{% for adult in {adults_repr} %}}\n"
         "    {% if adult in persons %}\n"
         "      {% if (now - as_timestamp(persons[adult].last_seen)) < 60 %}\n"
-        "        {% if persons[adult].camera == child_camera %}\n"
+        "        {% set adult_zone = camera_zones.get(persons[adult].camera, persons[adult].camera) %}\n"
+        "        {% if adult_zone == child_zone %}\n"
         "          {% set supervised.value = true %}\n"
-        "        {% elif child_zones | length > 0 %}\n"
-        "          {% for zone in child_zones %}\n"
-        "            {% if zone in persons[adult].frigate_zones %}\n"
-        "              {% set supervised.value = true %}\n"
-        "            {% endif %}\n"
-        "          {% endfor %}\n"
         "        {% endif %}\n"
         "      {% endif %}\n"
         "    {% endif %}\n"
@@ -394,6 +412,7 @@ def _build_template_sensors(
     persons: list[str],
     snapshot_source: str,
     persons_meta: dict[str, dict[str, Any]],
+    camera_zones: dict[str, str],
 ) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = [
         {"sensor": [_person_template_sensor(p) for p in persons]}
@@ -410,7 +429,7 @@ def _build_template_sensors(
         result.append(
             {
                 "binary_sensor": [
-                    _build_supervision_binary_sensor(child, adults)
+                    _build_supervision_binary_sensor(child, adults, camera_zones)
                     for child in children_needing_supervision
                 ]
             }
@@ -752,6 +771,7 @@ def generate(
     snapshot_source: str,
     camera_map: dict[str, str],
     persons_meta: dict[str, dict[str, Any]] | None = None,
+    camera_zones: dict[str, str] | None = None,
     ha_config_dir: str | None = None,
     ha_url: str | None = None,
     ha_token: str | None = None,
@@ -764,6 +784,8 @@ def generate(
 
     if persons_meta is None:
         persons_meta = {}
+    if camera_zones is None:
+        camera_zones = {}
 
     output_dir = os.path.abspath(output_dir)
     print(f"\nGenerating Frigate Identity dashboard for: {', '.join(persons)}")
@@ -779,7 +801,7 @@ def generate(
     if snapshot_source != "frigate_integration":
         _write(
             os.path.join(output_dir, "template_sensors.yaml"),
-            _dump(_build_template_sensors(persons, snapshot_source, persons_meta)),
+            _dump(_build_template_sensors(persons, snapshot_source, persons_meta, camera_zones)),
         )
 
     _write(
@@ -1018,9 +1040,10 @@ def main() -> None:
     yaml_persons: list[str] = []
     yaml_camera_map: dict[str, str] = {}
     yaml_persons_meta: dict[str, dict[str, Any]] = {}
+    yaml_camera_zones: dict[str, str] = {}
     if args.persons_file:
-        yaml_persons, yaml_camera_map, yaml_persons_meta = load_persons_yaml(
-            args.persons_file
+        yaml_persons, yaml_camera_map, yaml_persons_meta, yaml_camera_zones = (
+            load_persons_yaml(args.persons_file)
         )
 
     # Merge: file names first, then any extra CLI names (deduplicating, preserving order)
@@ -1044,6 +1067,7 @@ def main() -> None:
         args.snapshot_source,
         camera_map,
         yaml_persons_meta,
+        yaml_camera_zones,
         ha_config_dir=args.ha_config_dir,
         ha_url=args.ha_url,
         ha_token=args.ha_token,

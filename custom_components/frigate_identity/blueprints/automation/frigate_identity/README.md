@@ -44,27 +44,29 @@ Alerts when a vehicle is detected in the driveway while children are currently o
 
 ---
 
-### 3. Supervision Detection *(zone-aware)*
+### 3. Supervision Detection *(camera-zone-aware)*
 **File:** `supervision_detection.yaml`
 
 Creates a binary sensor that indicates if a child is currently supervised.
 
-A child is considered supervised when any trusted adult was seen within the
-timeout window AND either:
-- shares the **same camera** as the child, OR
-- shares at least one **active Frigate zone** with the child.
+Supervision is determined by mapping each Frigate camera to a **logical zone**
+via the `camera_zones` input.  A child is supervised when any trusted adult was
+seen within the timeout window AND their cameras resolve to the **same zone**.
 
-The zone-based check is essential for large yards where an adult and child
-may be visible on different cameras but in the same physical zone.
+> **Why not Frigate zones?** Frigate zones are pixel-regions scoped to a single
+> camera.  They are not shared across cameras, so they cannot be used for
+> cross-camera supervision checks.  Use `camera_zones` instead.
 
 **Inputs:**
 - Child name
 - List of trusted adults
+- Camera zone mapping (dict of camera → zone name; `{}` = same-camera only)
 - Supervision timeout (seconds, default 60)
 - Optional manual override entity
 
 **Features:**
-- Zone-aware: works across multiple cameras in the same zone
+- Works across multiple cameras covering the same physical area
+- Falls back to same-camera matching when `camera_zones` is empty
 - Configurable timeout
 - Manual override option
 - Shows supervising adult in attributes

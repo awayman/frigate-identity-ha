@@ -3,13 +3,20 @@ blueprint:
   description: >
     Create a binary sensor that detects if a child is supervised.
 
-    A child is considered supervised when any trusted adult was seen within the
-    configured timeout AND either shares the same Frigate camera OR shares at
-    least one active Frigate zone with the child.
+    Each Frigate camera is mapped to a logical supervision zone via the
+    camera_zones input.  An adult and child are considered co-located — and
+    therefore supervised — when both were seen within the timeout window AND
+    their cameras resolve to the same zone name.
 
-    The zone-based check is critical for large yards with multiple cameras: an
-    adult visible on camera B supervises a child on camera A as long as both
-    are in the same zone (e.g. "play_area").
+    Example: cameras "backyard" and "patio" both map to zone "back_yard".
+    Dad on the patio is supervising Alice in the backyard because they share
+    the same logical zone.
+
+    When camera_zones is empty ({}) supervision requires the same camera,
+    which is the safe default for single-camera setups.
+
+    Note: Frigate zones are pixel-regions scoped to one camera and cannot be
+    used for cross-camera supervision checks — use camera_zones instead.
   domain: template
   input:
     child_name:
@@ -21,6 +28,16 @@ blueprint:
       name: Trusted Adults
       description: List of adult names (as detected by Frigate)
       default: ["Dad", "Mom"]
+      selector:
+        object:
+    camera_zones:
+      name: Camera Zone Mapping
+      description: >
+        Map each Frigate camera name to a logical supervision zone.
+        Cameras with the same zone name are treated as covering the same
+        physical area.  Leave empty ({}) to require the same camera.
+        Example: {backyard: back_yard, patio: back_yard, front_door: front_entry}
+      default: {}
       selector:
         object:
     supervision_timeout:
@@ -48,35 +65,25 @@ binary_sensor:
       {% if not persons or child_name not in persons %}
         {{ false }}
       {% else %}
-        {% set child = persons[child_name] %}
-        {% set child_camera = child.camera %}
-        {% set child_zones = child.frigate_zones %}
+        {% set child_camera = persons[child_name].camera %}
+        {% set cz = camera_zones %}
+        {% set child_zone = cz.get(child_camera, child_camera) %}
         {% set now = as_timestamp(now()) %}
         {% set adults = trusted_adults %}
         {% set supervised = namespace(value=false) %}
 
         {% for adult in adults %}
           {% if adult in persons %}
-            {% set adult_data = persons[adult] %}
-            {% set adult_time = as_timestamp(adult_data.last_seen) %}
-
+            {% set adult_time = as_timestamp(persons[adult].last_seen) %}
             {% if (now - adult_time) < supervision_timeout %}
-              {# Same camera is always sufficient #}
-              {% if adult_data.camera == child_camera %}
+              {% set adult_zone = cz.get(persons[adult].camera, persons[adult].camera) %}
+              {% if adult_zone == child_zone %}
                 {% set supervised.value = true %}
-              {# Also supervising when sharing an active zone (multi-camera yards) #}
-              {% elif child_zones | length > 0 %}
-                {% for zone in child_zones %}
-                  {% if zone in adult_data.frigate_zones %}
-                    {% set supervised.value = true %}
-                  {% endif %}
-                {% endfor %}
               {% endif %}
             {% endif %}
           {% endif %}
         {% endfor %}
 
-        {# Allow manual override #}
         {% if manual_override_entity != '' %}
           {{ supervised.value or is_state(manual_override_entity, 'on') }}
         {% else %}
@@ -90,26 +97,19 @@ binary_sensor:
         {% if not persons or child_name not in persons %}
           null
         {% else %}
-          {% set child = persons[child_name] %}
-          {% set child_camera = child.camera %}
-          {% set child_zones = child.frigate_zones %}
+          {% set child_camera = persons[child_name].camera %}
+          {% set cz = camera_zones %}
+          {% set child_zone = cz.get(child_camera, child_camera) %}
           {% set now = as_timestamp(now()) %}
           {% set adults = trusted_adults %}
 
           {% for adult in adults %}
             {% if adult in persons %}
-              {% set adult_data = persons[adult] %}
-              {% set adult_time = as_timestamp(adult_data.last_seen) %}
-
+              {% set adult_time = as_timestamp(persons[adult].last_seen) %}
               {% if (now - adult_time) < supervision_timeout %}
-                {% if adult_data.camera == child_camera %}
+                {% set adult_zone = cz.get(persons[adult].camera, persons[adult].camera) %}
+                {% if adult_zone == child_zone %}
                   {{ adult }}
-                {% elif child_zones | length > 0 %}
-                  {% for zone in child_zones %}
-                    {% if zone in adult_data.frigate_zones %}
-                      {{ adult }}
-                    {% endif %}
-                  {% endfor %}
                 {% endif %}
               {% endif %}
             {% endif %}
