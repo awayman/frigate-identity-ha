@@ -1,28 +1,58 @@
 #!/usr/bin/env python3
 """Generate Home Assistant configuration for the Frigate Identity dashboard.
 
-This script produces three ready-to-use YAML files from a list of person names:
+This script produces ready-to-use YAML files from a list of person names.
+Use ``--snapshot-source`` to choose how the bounded snapshot is displayed:
 
-  - mqtt_cameras.yaml        MQTT camera entities (bounded snapshots from Frigate)
-  - template_sensors.yaml    Per-person location / confidence / zone template sensors
-  - dashboard.yaml           Full Lovelace dashboard (snapshot + location per person)
+``mqtt`` (default)
+    MQTT camera entities subscribing to ``identity/snapshots/{person_id}``.
+    The Frigate Identity Service publishes a cropped JPEG there for each
+    identified person, so the snapshot follows the person across cameras.
+    Generates ``mqtt_cameras.yaml``, ``template_sensors.yaml``,
+    ``dashboard.yaml``.
+
+``frigate_api``
+    HA template ``image`` entities built from the ``snapshot_url`` attribute
+    already stored in each person's location sensor.  Uses the same Frigate
+    HTTP API that the official Frigate HA integration uses — no extra MQTT
+    camera subscription required.  Generates ``template_sensors.yaml`` and
+    ``dashboard.yaml`` only (``mqtt_cameras.yaml`` is not needed).
+
+``frigate_integration``
+    Reuses the ``image.<camera>_person`` entities created by the official
+    Frigate HA integration (blakeblackshear/frigate-hass-integration).
+    These entities are **per camera**, not per identified person: they show
+    the latest detected person on a specific camera regardless of who it is.
+    Pass ``--cameras`` to map each person to their primary camera name so the
+    generator can construct the right entity ID.  When a person is not mapped
+    their card will reference the person-slug camera entity as a best-effort
+    fallback.  No extra YAML configuration is generated beyond
+    ``dashboard.yaml``.
 
 Usage
 -----
+    # MQTT cameras (default)
     python generate_dashboard.py Alice Bob Dad Mom
+
+    # Frigate API template images (no MQTT cameras needed)
+    python generate_dashboard.py --snapshot-source frigate_api Alice Bob Dad Mom
+
+    # Official Frigate integration (per-camera entities)
+    python generate_dashboard.py --snapshot-source frigate_integration \\
+        --cameras Alice:backyard Bob:front_door Dad:driveway Mom:backyard \\
+        Alice Bob Dad Mom
 
     # Write to a custom output directory
     python generate_dashboard.py --output /config/frigate_identity Alice Bob Dad Mom
 
-Then add to ``configuration.yaml``::
+MQTT / frigate_api — add to ``configuration.yaml``::
 
     mqtt:
-      camera: !include frigate_identity/mqtt_cameras.yaml
+      camera: !include frigate_identity/mqtt_cameras.yaml   # mqtt mode only
 
     template: !include frigate_identity/template_sensors.yaml
 
-Finally copy ``dashboard.yaml`` to a Lovelace raw-config dashboard or paste its
-content into an existing view.
+Then paste ``dashboard.yaml`` into a Lovelace Raw-configuration editor.
 """
 
 from __future__ import annotations
@@ -93,22 +123,57 @@ def _person_template_sensor(person: str) -> dict[str, Any]:
     }
 
 
-def _build_template_sensors(persons: list[str]) -> list[dict[str, Any]]:
-    return [{"sensor": [_person_template_sensor(p) for p in persons]}]
+def _person_template_image(person: str) -> dict[str, Any]:
+    """Template image entity that fetches the event thumbnail from Frigate API."""
+    slug = _slug(person)
+    location_entity = f"sensor.{slug}_location"
+    return {
+        "name": f"{person} Snapshot",
+        "unique_id": f"frigate_identity_{slug}_snapshot_image",
+        "url": _LiteralStr(
+            f"{{{{ state_attr('{location_entity}', 'snapshot_url') }}}}\n"
+        ),
+        "verify_ssl": False,
+    }
+
+
+def _build_template_sensors(
+    persons: list[str], snapshot_source: str
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = [
+        {"sensor": [_person_template_sensor(p) for p in persons]}
+    ]
+    if snapshot_source == "frigate_api":
+        result.append({"image": [_person_template_image(p) for p in persons]})
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Dashboard cards
 # ---------------------------------------------------------------------------
 
-def _person_card(person: str) -> dict[str, Any]:
+def _snapshot_entity(person: str, snapshot_source: str, camera_map: dict[str, str]) -> str:
+    """Return the HA entity ID used for the snapshot card."""
     slug = _slug(person)
-    camera_entity = f"camera.{slug}_snapshot"
+    if snapshot_source == "mqtt":
+        return f"camera.{slug}_snapshot"
+    if snapshot_source == "frigate_api":
+        return f"image.{slug}_snapshot"
+    # frigate_integration: official Frigate HA integration provides image.<camera>_person
+    camera = camera_map.get(person, slug)
+    return f"image.{_slug(camera)}_person"
+
+
+def _person_card(
+    person: str, snapshot_source: str, camera_map: dict[str, str]
+) -> dict[str, Any]:
+    slug = _slug(person)
     location_entity = f"sensor.{slug}_location"
+    snap_entity = _snapshot_entity(person, snapshot_source, camera_map)
 
     snapshot_card: dict[str, Any] = {
         "type": "picture-entity",
-        "entity": camera_entity,
+        "entity": snap_entity,
         "name": f"{person} – Latest Snapshot",
         "show_state": False,
         "show_name": True,
@@ -152,7 +217,9 @@ def _person_card(person: str) -> dict[str, Any]:
     }
 
 
-def _build_dashboard(persons: list[str]) -> dict[str, Any]:
+def _build_dashboard(
+    persons: list[str], snapshot_source: str, camera_map: dict[str, str]
+) -> dict[str, Any]:
     header_card: dict[str, Any] = {
         "type": "markdown",
         "content": (
@@ -161,7 +228,7 @@ def _build_dashboard(persons: list[str]) -> dict[str, Any]:
         ),
     }
 
-    person_cards = [_person_card(p) for p in persons]
+    person_cards = [_person_card(p, snapshot_source, camera_map) for p in persons]
 
     summary_card: dict[str, Any] = {
         "type": "entities",
@@ -224,7 +291,9 @@ _FILE_HEADER = (
 
 
 def _write(path: str, content: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(_FILE_HEADER + content)
     print(f"  Wrote {path}")
@@ -234,40 +303,81 @@ def _write(path: str, content: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def generate(persons: list[str], output_dir: str) -> None:
+def generate(
+    persons: list[str],
+    output_dir: str,
+    snapshot_source: str,
+    camera_map: dict[str, str],
+) -> None:
     if not persons:
         print("ERROR: supply at least one person name.", file=sys.stderr)
         sys.exit(1)
 
     output_dir = os.path.abspath(output_dir)
     print(f"\nGenerating Frigate Identity dashboard for: {', '.join(persons)}")
+    print(f"Snapshot source: {snapshot_source}")
     print(f"Output directory: {output_dir}\n")
 
-    _write(
-        os.path.join(output_dir, "mqtt_cameras.yaml"),
-        _dump(_build_mqtt_cameras(persons)),
-    )
-    _write(
-        os.path.join(output_dir, "template_sensors.yaml"),
-        _dump(_build_template_sensors(persons)),
-    )
+    if snapshot_source == "mqtt":
+        _write(
+            os.path.join(output_dir, "mqtt_cameras.yaml"),
+            _dump(_build_mqtt_cameras(persons)),
+        )
+
+    if snapshot_source != "frigate_integration":
+        _write(
+            os.path.join(output_dir, "template_sensors.yaml"),
+            _dump(_build_template_sensors(persons, snapshot_source)),
+        )
+
     _write(
         os.path.join(output_dir, "dashboard.yaml"),
-        _dump(_build_dashboard(persons)),
+        _dump(_build_dashboard(persons, snapshot_source, camera_map)),
     )
 
-    print("\n✅ Done!  Next steps:")
+    print(f"\n✅ Done!  Next steps:")
     print()
-    print("1. Add to configuration.yaml:")
-    print("     mqtt:")
-    print("       camera: !include frigate_identity/mqtt_cameras.yaml")
-    print()
-    print("     template: !include frigate_identity/template_sensors.yaml")
-    print()
-    print("2. Restart Home Assistant.")
-    print()
-    print("3. In Lovelace → Edit dashboard → Raw configuration editor,")
-    print("   paste the contents of dashboard.yaml.")
+    if snapshot_source == "mqtt":
+        print("1. Add to configuration.yaml:")
+        print(f"     mqtt:")
+        print(f"       camera: !include {os.path.join(output_dir, 'mqtt_cameras.yaml')}")
+        print()
+        print(f"     template: !include {os.path.join(output_dir, 'template_sensors.yaml')}")
+        print()
+        print("2. Restart Home Assistant.")
+        print()
+        print("3. In Lovelace → Edit dashboard → Raw configuration editor,")
+        print("   paste the contents of dashboard.yaml.")
+    elif snapshot_source == "frigate_api":
+        print("1. Add to configuration.yaml:")
+        print(f"     template: !include {os.path.join(output_dir, 'template_sensors.yaml')}")
+        print()
+        print("2. Restart Home Assistant.")
+        print()
+        print("3. In Lovelace → Edit dashboard → Raw configuration editor,")
+        print("   paste the contents of dashboard.yaml.")
+    else:  # frigate_integration
+        print("1. Ensure the official Frigate HA integration is installed and")
+        print("   the image.<camera>_person entities are available.")
+        print()
+        print("2. In Lovelace → Edit dashboard → Raw configuration editor,")
+        print("   paste the contents of dashboard.yaml.")
+        print()
+        print("   NOTE: Each snapshot card shows the latest person detected on the")
+        print("   mapped camera, not necessarily the specific identified person.")
+
+
+def _parse_camera_map(pairs: list[str]) -> dict[str, str]:
+    """Parse 'Person:camera_name' pairs into a dict."""
+    result: dict[str, str] = {}
+    for pair in pairs:
+        if ":" not in pair:
+            print(f"ERROR: --cameras entry '{pair}' must be in Person:camera format.",
+                  file=sys.stderr)
+            sys.exit(1)
+        person, camera = pair.split(":", 1)
+        result[person.strip()] = camera.strip()
+    return result
 
 
 def main() -> None:
@@ -287,9 +397,36 @@ def main() -> None:
         metavar="DIR",
         help="Directory where the generated YAML files are written (default: current dir)",
     )
+    parser.add_argument(
+        "--snapshot-source",
+        choices=["mqtt", "frigate_api", "frigate_integration"],
+        default="mqtt",
+        metavar="SOURCE",
+        help=(
+            "How to source the bounded snapshot image. "
+            "'mqtt' (default): MQTT camera entities from identity/snapshots/{person}. "
+            "'frigate_api': HA template image entities using the snapshot_url attribute "
+            "(no MQTT camera config needed). "
+            "'frigate_integration': reuse image.<camera>_person entities from the "
+            "official Frigate HA integration (requires --cameras mapping)."
+        ),
+    )
+    parser.add_argument(
+        "--cameras",
+        nargs="*",
+        default=[],
+        metavar="PERSON:CAMERA",
+        help=(
+            "Person-to-camera mappings for --snapshot-source frigate_integration, "
+            "e.g. Alice:backyard Bob:front_door.  "
+            "The camera name must match a Frigate camera name."
+        ),
+    )
     args = parser.parse_args()
-    generate(args.persons, args.output)
+    camera_map = _parse_camera_map(args.cameras)
+    generate(args.persons, args.output, args.snapshot_source, camera_map)
 
 
 if __name__ == "__main__":
     main()
+

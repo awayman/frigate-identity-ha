@@ -64,13 +64,27 @@ No YAML editing required!
 
 ## Dashboard Generation
 
-The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard** for any set of tracked persons with a single command.  It generates three ready-to-use YAML files:
+The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard** for any set of tracked persons with a single command.
 
-| File | Purpose |
-|---|---|
-| `mqtt_cameras.yaml` | MQTT camera entities – shows the bounded snapshot published by Frigate |
-| `template_sensors.yaml` | Per-person sensors (location, confidence, zones, last-seen) |
-| `dashboard.yaml` | Complete Lovelace dashboard – one card per person |
+### Snapshot source options
+
+Use `--snapshot-source` to choose how each person's bounded snapshot is displayed.  Pick the option that best matches your setup:
+
+| `--snapshot-source` | Snapshot entity | Needs official Frigate integration | Needs MQTT camera config |
+|---|---|---|---|
+| `mqtt` *(default)* | `camera.<person>_snapshot` | No | Yes |
+| `frigate_api` | `image.<person>_snapshot` (template) | No | No |
+| `frigate_integration` | `image.<camera>_person` | **Yes** | No |
+
+> **Official Frigate HA integration note** – The official
+> [Frigate integration](https://github.com/blakeblackshear/frigate-hass-integration)
+> creates `image.<camera_name>_person` and `camera.<camera_name>_person` entities
+> that show the **latest detection on a specific camera**, regardless of who was
+> detected.  These are camera-aware, not identity-aware, so they cannot
+> distinguish Alice from Bob.  Use `frigate_integration` mode when you already
+> have the official integration installed and want to avoid adding extra config;
+> use `mqtt` or `frigate_api` mode when you need per-person identity tracking
+> (the snapshot follows the person across cameras).
 
 ### Quick start
 
@@ -78,16 +92,25 @@ The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard*
 # Requires Python 3 and PyYAML
 pip install pyyaml
 
-# Generate config for your household (replace names with your own)
+# mqtt mode (default) – identity-correlated MQTT camera entities
 python examples/generate_dashboard.py --output /config/frigate_identity \
     Alice Bob Dad Mom
+
+# frigate_api mode – HA template image entities, no MQTT cameras needed
+python examples/generate_dashboard.py --snapshot-source frigate_api \
+    --output /config/frigate_identity Alice Bob Dad Mom
+
+# frigate_integration mode – reuse official Frigate integration entities
+python examples/generate_dashboard.py --snapshot-source frigate_integration \
+    --cameras Alice:backyard Bob:front_door Dad:driveway Mom:backyard \
+    --output /config/frigate_identity Alice Bob Dad MomMom
 ```
 
-Then reference the generated files in `configuration.yaml`:
+**mqtt / frigate_api** – reference the generated files in `configuration.yaml`:
 
 ```yaml
 mqtt:
-  camera: !include frigate_identity/mqtt_cameras.yaml
+  camera: !include frigate_identity/mqtt_cameras.yaml  # mqtt mode only
 
 template: !include frigate_identity/template_sensors.yaml
 ```
@@ -95,13 +118,13 @@ template: !include frigate_identity/template_sensors.yaml
 Restart Home Assistant, then go to **Settings → Dashboards → (your dashboard) → Edit → Raw configuration editor** and paste the contents of `dashboard.yaml`.
 
 Each person gets a card that shows:
-- 📸 **Bounded snapshot** – the latest cropped image from Frigate (`camera.<person>_snapshot`)
+- 📸 **Bounded snapshot** – the latest cropped image from Frigate
 - 📍 **Location** – which Frigate camera last detected them
 - 🗺 **Zones** – active Frigate zones
 - 🎯 **Confidence** – identification confidence score
 - 🕐 **Last Seen** – timestamp of last detection
 
-Re-run the script whenever you add or remove tracked persons to regenerate all three files.  See `examples/dashboard.yaml` for a full example output.
+Re-run the script whenever you add or remove tracked persons.  See `examples/dashboard.yaml` for a full example output.
 
 ## Installation
 
