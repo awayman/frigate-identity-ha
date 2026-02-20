@@ -165,6 +165,9 @@ class FrigateIdentityAllPersonsSensor(SensorEntity):
             # Update state
             self._attr_native_value = len(self._persons)
             self._attr_extra_state_attributes = {"persons": self._persons}
+            self.async_write_ha_state()
+
+        self._unsub = await mqtt.async_subscribe(
             self.hass, "identity/person/#", _mqtt_message
         )
 
