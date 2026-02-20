@@ -66,6 +66,67 @@ No YAML editing required!
 
 The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard** for any set of tracked persons with a single command.
 
+### Using `persons.yaml` from the Identity Service
+
+If you already have the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) configured, point the generator directly at its `persons.yaml` — no need to retype names:
+
+```bash
+pip install pyyaml
+python examples/generate_dashboard.py \
+    --persons-file /path/to/frigate_identity_service/persons.yaml \
+    --output /config/frigate_identity
+```
+
+The generator reads **all useful metadata** from `persons.yaml`:
+
+| Field | Effect on generated config |
+|---|---|
+| Name (map key) | Person included in dashboard, sensors, cameras |
+| `camera` | Default camera mapping for `frigate_integration` mode |
+| `role: child` or `requires_supervision: true` | Supervision binary sensor generated; dashboard card gets **Supervised** row |
+| `role: trusted_adult` or `can_supervise: true` | Listed as supervisor in all children's supervision sensors |
+| `dangerous_zones` | Danger-zone automation generated per child with those zones |
+
+**Example `persons.yaml`** (from `awayman/frigate_identity_service`):
+
+```yaml
+persons:
+  Alice:
+    role: child
+    age: 5
+    requires_supervision: true
+    dangerous_zones: [street, neighbor_yard]
+    camera: backyard
+  Bob:
+    role: child
+    age: 10
+    requires_supervision: true
+    dangerous_zones: [street]
+    camera: front_door
+  Dad:
+    role: trusted_adult
+    can_supervise: true
+    camera: driveway
+  Mom:
+    role: trusted_adult
+    can_supervise: true
+```
+
+Running the generator against this file produces **four** ready-to-use files:
+
+| File | Contents |
+|---|---|
+| `mqtt_cameras.yaml` | MQTT camera entities for Alice, Bob, Dad, Mom |
+| `template_sensors.yaml` | Location sensors **+** supervision binary sensors for Alice & Bob |
+| `dashboard.yaml` | Full dashboard — child cards include a **Supervised** row |
+| `danger_zone_automations.yaml` | Danger-zone MQTT automations for Alice & Bob (edit `notify.notify` first) |
+
+You can also add extra persons not in the file by appending them as positional arguments:
+
+```bash
+python examples/generate_dashboard.py --persons-file persons.yaml Grandma
+```
+
 ### Snapshot source options
 
 Use `--snapshot-source` to choose how each person's bounded snapshot is displayed.  Pick the option that best matches your setup:
@@ -86,7 +147,7 @@ Use `--snapshot-source` to choose how each person's bounded snapshot is displaye
 > use `mqtt` or `frigate_api` mode when you need per-person identity tracking
 > (the snapshot follows the person across cameras).
 
-### Quick start
+### Quick start (names on the command line)
 
 ```bash
 # Requires Python 3 and PyYAML
@@ -103,7 +164,7 @@ python examples/generate_dashboard.py --snapshot-source frigate_api \
 # frigate_integration mode – reuse official Frigate integration entities
 python examples/generate_dashboard.py --snapshot-source frigate_integration \
     --cameras Alice:backyard Bob:front_door Dad:driveway Mom:backyard \
-    --output /config/frigate_identity Alice Bob Dad MomMom
+    --output /config/frigate_identity Alice Bob Dad Mom
 ```
 
 **mqtt / frigate_api** – reference the generated files in `configuration.yaml`:
@@ -113,6 +174,8 @@ mqtt:
   camera: !include frigate_identity/mqtt_cameras.yaml  # mqtt mode only
 
 template: !include frigate_identity/template_sensors.yaml
+
+automation: !include frigate_identity/danger_zone_automations.yaml  # when children have dangerous_zones
 ```
 
 Restart Home Assistant, then go to **Settings → Dashboards → (your dashboard) → Edit → Raw configuration editor** and paste the contents of `dashboard.yaml`.
@@ -123,6 +186,7 @@ Each person gets a card that shows:
 - 🗺 **Zones** – active Frigate zones
 - 🎯 **Confidence** – identification confidence score
 - 🕐 **Last Seen** – timestamp of last detection
+- 👁 **Supervised** – whether a trusted adult is nearby *(children only, when `persons.yaml` has role data)*
 
 Re-run the script whenever you add or remove tracked persons.  See `examples/dashboard.yaml` for a full example output.
 
