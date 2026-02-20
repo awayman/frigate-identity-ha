@@ -706,6 +706,9 @@ def _copy_blueprints(ha_config_dir: str) -> None:
 # HA REST API helpers
 # ---------------------------------------------------------------------------
 
+_ERROR_DETAIL_MAX_LEN = 200  # characters of HTTP error body to include in messages
+
+
 def _ha_request(
     method: str,
     ha_url: str,
@@ -724,11 +727,13 @@ def _ha_request(
             raw = resp.read()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")[:200]
+        detail = exc.read().decode(errors="replace")[:_ERROR_DETAIL_MAX_LEN]
+        if len(detail) == _ERROR_DETAIL_MAX_LEN:
+            detail += "..."
         print(f"  ⚠️  HA API {method} {path} → HTTP {exc.code}: {detail}",
               file=sys.stderr)
         return None
-    except Exception as exc:  # noqa: BLE001
+    except OSError as exc:
         print(f"  ❌  HA API error: {exc}", file=sys.stderr)
         return None
 
