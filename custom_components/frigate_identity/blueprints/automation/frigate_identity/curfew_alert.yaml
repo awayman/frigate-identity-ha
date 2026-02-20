@@ -1,0 +1,82 @@
+blueprint:
+  name: Frigate Identity - Curfew Alert
+  description: >
+    Alert when a child is still detected outside after a specified curfew time.
+    Triggers once per curfew window (using a cooldown) so you only get one
+    notification per evening rather than one per detection.
+  domain: automation
+  input:
+    child_name:
+      name: Child Name
+      description: Name of the child to monitor (must match Frigate face recognition name)
+      selector:
+        text:
+    curfew_time:
+      name: Curfew Time
+      description: Time by which the child should be inside (e.g. 20:00)
+      default: "20:00:00"
+      selector:
+        time:
+    check_end_time:
+      name: Stop Checking At
+      description: Stop sending alerts after this time (e.g. 23:00)
+      default: "23:00:00"
+      selector:
+        time:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g. mobile_app_pixel_8)
+      selector:
+        text:
+    alert_cooldown:
+      name: Alert Cooldown
+      description: Minimum time between repeated curfew alerts (minutes)
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: minutes
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  # Fire every 5 minutes so we check repeatedly during the curfew window
+  - platform: time_pattern
+    minutes: "/5"
+
+variables:
+  child_name_var: !input child_name
+  curfew_var: !input curfew_time
+  end_var: !input check_end_time
+  notify_service_var: !input notify_service
+
+condition:
+  # Only act between curfew time and stop-checking time
+  - condition: time
+    after: !input curfew_time
+    before: !input check_end_time
+  # Child must currently be detected (present in All Persons sensor)
+  - condition: template
+    value_template: >
+      {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
+      {{ persons is not none and child_name_var in persons }}
+
+action:
+  - service: "notify.{{ notify_service_var }}"
+    data:
+      title: "🌙 Curfew Alert"
+      message: >
+        {{ child_name_var }} is still outside after curfew!
+        Last seen at {{ state_attr('sensor.frigate_identity_all_persons', 'persons')[child_name_var].camera }}.
+      data:
+        tag: "curfew_{{ child_name_var | lower | replace(' ', '_') }}"
+        actions:
+          - action: "CHILD_INSIDE"
+            title: "Child is Inside"
+          - action: "VIEW_CAMERA"
+            title: "View Camera"
+
+  - delay:
+      minutes: !input alert_cooldown

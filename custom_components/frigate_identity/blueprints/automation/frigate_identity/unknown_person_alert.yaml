@@ -1,0 +1,99 @@
+blueprint:
+  name: Frigate Identity - Unknown Person Alert
+  description: >
+    Alert when a person is detected with a confidence score below a threshold,
+    indicating someone who could not be identified with certainty.  Useful for
+    detecting visitors or strangers near your property.
+
+    Triggers on any MQTT identity event where the confidence is below the
+    configured threshold, regardless of who the identity service thinks it is.
+  domain: automation
+  input:
+    confidence_threshold:
+      name: Confidence Threshold
+      description: >
+        Detections with confidence BELOW this value trigger the alert.
+        0.5 = 50% confidence.  Adjust lower to reduce false positives.
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 0.9
+          step: 0.05
+    known_persons:
+      name: Known Persons (Ignore List)
+      description: >
+        List of person names to ignore even if their confidence is low.
+        Add household members who are sometimes hard to identify (e.g. when
+        wearing hats or in poor lighting).
+      default: []
+      selector:
+        object:
+    cameras_to_monitor:
+      name: Cameras to Monitor
+      description: >
+        List of Frigate camera names to watch for unknown persons.
+        Leave empty to monitor all cameras.
+      default: []
+      selector:
+        object:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g. mobile_app_pixel_8)
+      selector:
+        text:
+    alert_cooldown:
+      name: Alert Cooldown
+      description: Minimum time between alerts for the same camera (seconds)
+      default: 120
+      selector:
+        number:
+          min: 30
+          max: 600
+          unit_of_measurement: seconds
+
+mode: queued
+max: 5
+
+trigger:
+  - platform: mqtt
+    topic: "identity/person/+"
+
+variables:
+  threshold_var: !input confidence_threshold
+  known_var: !input known_persons
+  cameras_var: !input cameras_to_monitor
+  notify_service_var: !input notify_service
+
+condition:
+  # Confidence must be below threshold
+  - condition: template
+    value_template: >
+      {{ trigger.payload_json.get('confidence', 1.0) | float < threshold_var | float }}
+  # Detected person must not be in the ignore list
+  - condition: template
+    value_template: >
+      {{ trigger.payload_json.get('person_id', '') not in known_var }}
+  # Camera filter (if configured)
+  - condition: template
+    value_template: >
+      {% set cam = trigger.payload_json.get('camera', '') %}
+      {{ cameras_var | length == 0 or cam in cameras_var }}
+
+action:
+  - service: "notify.{{ notify_service_var }}"
+    data:
+      title: "👤 Unknown Person Detected"
+      message: >
+        Low-confidence detection at {{ trigger.payload_json.camera }}
+        ({{ (trigger.payload_json.get('confidence', 0) * 100) | round(0) }}% — {{ trigger.payload_json.get('source', 'unknown') }}).
+      data:
+        image: "{{ trigger.payload_json.snapshot_url }}"
+        tag: "unknown_person_{{ trigger.payload_json.camera }}"
+        actions:
+          - action: "PERSON_KNOWN"
+            title: "It's Someone I Know"
+          - action: "VIEW_CAMERA"
+            title: "View Camera"
+
+  - delay: !input alert_cooldown

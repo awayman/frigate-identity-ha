@@ -80,6 +80,68 @@ Handles action button presses from safety alert notifications.
 
 ---
 
+### 5. Curfew Alert
+**File:** `curfew_alert.yaml`
+
+Alerts when a child is still detected outside after a configured curfew time.
+Checks every 5 minutes between curfew time and a stop-checking time, with a
+configurable cooldown to avoid repeated alerts.
+
+**Inputs:**
+- Child name
+- Curfew time (e.g. 20:00)
+- Stop-checking time (e.g. 23:00)
+- Notification service
+- Alert cooldown (minutes)
+
+**Features:**
+- Checks repeatedly on a schedule (every 5 min) in the curfew window
+- Single-mode with cooldown to avoid alert spam
+- Notification includes last-seen camera
+
+---
+
+### 6. All Children Home
+**File:** `all_children_home.yaml`
+
+Sends a confirmation notification when every child in a configured list has
+been detected on a home camera during the evening check window.
+
+**Inputs:**
+- List of children names to track
+- List of home camera names (front door, hallway, etc.)
+- Notification service
+- Start/stop checking times
+- Daily cooldown (hours)
+
+**Features:**
+- All listed children must appear on a home camera before notifying
+- Configurable time window (e.g. after school dismissal)
+- Daily cooldown prevents repeated notifications
+
+---
+
+### 7. Unknown Person Alert
+**File:** `unknown_person_alert.yaml`
+
+Alerts when an identity event arrives with confidence below a threshold,
+indicating someone the system could not recognise clearly.
+
+**Inputs:**
+- Confidence threshold (default 0.5)
+- Known persons ignore list
+- Cameras to monitor (empty = all cameras)
+- Notification service
+- Alert cooldown (seconds)
+
+**Features:**
+- Fires on any low-confidence MQTT identity event
+- Ignore list prevents false positives for household members in poor conditions
+- Snapshot image included in notification
+- Action buttons: "It's Someone I Know" / "View Camera"
+
+---
+
 ## Installation
 
 ### Method 1: Via HACS Integration Install (Recommended)
