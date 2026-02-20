@@ -1,14 +1,13 @@
 # Frigate Identity – Dashboard Setup & Further Automations
 
-This guide covers the complete end-to-end flow: running the generator, wiring
-the output files into Home Assistant, creating the Lovelace dashboard through
-the HA UI, and setting up further automations to get the most out of the system.
+This guide covers the end-to-end flow: generating the configuration, wiring it
+into Home Assistant, and setting up automations for yard safety monitoring.
 
 ---
 
 ## Part 1 – Generate the Configuration Files
 
-If you have a `persons.yaml` from the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service), run:
+If you have a `persons.yaml` from the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service), point the generator at it:
 
 ```bash
 pip install pyyaml
@@ -30,258 +29,205 @@ The generator writes these files to `/config/frigate_identity/`:
 | File | What it contains |
 |---|---|
 | `mqtt_cameras.yaml` | MQTT `camera` entities — one per person (bounded snapshot) |
-| `template_sensors.yaml` | Per-person location sensors + supervision binary sensors (when role data present) |
-| `dashboard.yaml` | Full Lovelace dashboard YAML |
-| `danger_zone_automations.yaml` | Danger-zone MQTT automations *(only when children have `dangerous_zones`)* |
+| `template_sensors.yaml` | Per-person location sensors + zone-aware supervision binary sensors |
+| `dashboard.yaml` | Full Lovelace dashboard YAML (proper `views:` structure) |
+| `danger_zone_automations.yaml` | Danger-zone automations *(only when children have `dangerous_zones`)* |
 
 ---
 
-## Part 2 – Wire the Files into Home Assistant
+## Part 2 – Automated One-Command Setup (Recommended)
 
-Open `/config/configuration.yaml` and add the following includes:
-
-```yaml
-# MQTT camera entities for bounded person snapshots
-mqtt:
-  camera: !include frigate_identity/mqtt_cameras.yaml
-
-# Per-person location/confidence/zone sensors (+ supervision binary sensors)
-template: !include frigate_identity/template_sensors.yaml
-
-# Danger-zone automations — only needed if the file was generated
-automation: !include frigate_identity/danger_zone_automations.yaml
-```
-
-> **Tip — existing `automation:` block**: If you already have automations in
-> `configuration.yaml`, change the existing key to a list or use
-> `automation: !include_dir_merge_list automations/` and place the generated
-> file inside that folder.
-
-**Restart Home Assistant** after saving (`Settings → System → Restart`).
-
-### Verify the entities appeared
-
-1. Go to **Settings → Devices & Services → Entities**
-2. Search for `alice_location` (or whichever name you used) — you should see:
-   - `sensor.alice_location`
-   - `binary_sensor.alice_supervised` *(only if role data was present)*
-   - `camera.alice_snapshot`
-
----
-
-## Part 3 – Create the Lovelace Dashboard
-
-### 3a. Create a new dashboard
-
-1. Go to **Settings → Dashboards**
-2. Click **+ Add dashboard** (bottom-right)
-3. Fill in:
-   - **Title**: `Frigate Identity` (or any name you like)
-   - **Icon**: `mdi:account-search`
-   - **URL path**: `frigate-identity`
-4. Uncheck **"Show in sidebar"** if you want it hidden until ready
-5. Click **Create**
-
-### 3b. Open the Raw Configuration Editor
-
-1. Click on your new dashboard to open it
-2. Click the **pencil ✏️ (Edit)** button in the top-right
-3. Click the **three-dot ⋮ menu** → **"Raw configuration editor"**
-
-   > The Raw Configuration Editor lets you paste YAML directly.
-   > If you don't see it, ensure you are in **Edit mode** first.
-
-### 3c. Paste the generated dashboard YAML
-
-1. Open `/config/frigate_identity/dashboard.yaml` in a text editor
-2. Select **all** content (`Ctrl+A` / `Cmd+A`)
-3. Copy it
-4. In the HA Raw Configuration Editor, **select all** existing content and **replace** it with what you copied
-5. Click **Save**
-6. Click the **X** to close the editor
-
-Your dashboard is now live. 🎉
-
-### 3d. Verify it looks correct
-
-- Each tracked person should have a **snapshot card** (shows latest bounded image) and a **status card** (location, zones, confidence, etc.)
-- Children will also show a **Supervised** row
-- The bottom **System Status** card shows total tracked persons and last detection
-
-> **No image showing?** The MQTT camera entity updates only when the Identity
-> Service publishes to `identity/snapshots/{person}`.  Walk in front of a
-> camera and check if `camera.alice_snapshot` updates.
-
-### 3e. Keeping the dashboard up to date
-
-When you add or remove people from `persons.yaml`, re-run the generator and
-repeat steps 3b–3c:
+If your HA `/config` directory is accessible (HA OS, Container, or SSH), you
+can let the generator configure **everything** in a single command:
 
 ```bash
 python examples/generate_dashboard.py \
-    --persons-file persons.yaml \
-    --output /config/frigate_identity
+    --persons-file /config/persons.yaml \
+    --output /config/frigate_identity \
+    --ha-config-dir /config \
+    --ha-url http://homeassistant.local:8123 \
+    --ha-token YOUR_LONG_LIVED_ACCESS_TOKEN \
+    --copy-blueprints \
+    --restart
 ```
 
-Then restart HA to pick up any new sensors.
+What each flag does:
 
----
+| Flag | What it automates |
+|---|---|
+| `--ha-config-dir /config` | Writes `packages/frigate_identity.yaml` (wires sensors/cameras/automations into HA). Patches `configuration.yaml` to enable packages if needed. |
+| `--ha-url` + `--ha-token` | Pushes the Lovelace dashboard directly via the HA REST API — no pasting required. |
+| `--copy-blueprints` | Copies blueprint files to `/config/blueprints/automation/frigate_identity/`. |
+| `--restart` | Triggers a Home Assistant restart after all changes. |
 
-## Part 4 – Further Automation Steps
+**Getting a long-lived access token:**
+In HA → Profile (bottom-left) → Security tab → Long-Lived Access Tokens → Create.
 
-Beyond the danger-zone alerts the generator creates automatically, the
-following automations cover the most common real-world scenarios.
+After the restart, the Frigate Identity view is live at `/lovelace/frigate-identity`.
 
-### 4.1 – Use the built-in Blueprints (no YAML needed)
+### Re-running after changes
 
-This integration ships with **seven blueprints**.  Install them by copying the
-blueprint files from the integration directory to your HA blueprints folder:
+When you update `persons.yaml` (add/remove a person), just re-run:
 
 ```bash
-cp /config/custom_components/frigate_identity/blueprints/automation/frigate_identity/*.yaml \
-   /config/blueprints/automation/frigate_identity/
+python examples/generate_dashboard.py \
+    --persons-file /config/persons.yaml \
+    --output /config/frigate_identity \
+    --ha-config-dir /config \
+    --ha-url http://homeassistant.local:8123 \
+    --ha-token YOUR_TOKEN \
+    --restart
 ```
 
-Then in HA: **Settings → Automations & Scenes → Blueprints** — they appear
-immediately (no restart needed).
-
-#### Available Blueprints
-
-| Blueprint | What it does |
-|---|---|
-| **Child Danger Zone Alert** | Alert when child enters a dangerous zone without supervision |
-| **Vehicle with Children Outside** | Alert when a vehicle is in the driveway and children are outside |
-| **Supervision Detection** | Template binary sensor — is this child supervised right now? |
-| **Notification Action Handlers** | Handle "Adult Present" / "View Camera" notification buttons |
-| **Curfew Alert** *(new)* | Alert when a child is still outside after curfew time |
-| **All Children Home** *(new)* | Notify when every child is detected on a home camera |
-| **Unknown Person Alert** *(new)* | Alert when a low-confidence / unrecognised person is detected |
-
-### 4.2 – Curfew Alert
-
-**Scenario**: You want a notification at 20:00 if any child is still outside.
-
-1. **Settings → Automations & Scenes → Create Automation**
-2. **Start with a blueprint → "Frigate Identity - Curfew Alert"**
-3. Fill in:
-   - **Child Name**: `Alice`
-   - **Curfew Time**: `20:00`
-   - **Stop Checking At**: `23:00`
-   - **Notification Service**: `mobile_app_your_phone`
-4. **Save** as "Alice Curfew Alert"
-
-Repeat for each child with their own curfew time.
-
-### 4.3 – All Children Home
-
-**Scenario**: Send one calm confirmation when everyone is inside for the night.
-
-1. **Create Automation → Start with a blueprint → "Frigate Identity - All Children Home"**
-2. Fill in:
-   - **Children Names**: `["Alice", "Bob"]`
-   - **Home Cameras**: `["front_door", "hallway"]`
-   - **Start Checking After**: `14:00` (school dismissal)
-   - **Notification Service**: `mobile_app_your_phone`
-3. **Save**
-
-### 4.4 – Unknown Person Alert
-
-**Scenario**: Alert when someone is detected with low confidence (a stranger or
-someone the system couldn't identify clearly).
-
-1. **Create Automation → Start with a blueprint → "Frigate Identity - Unknown Person Alert"**
-2. Fill in:
-   - **Confidence Threshold**: `0.5`
-   - **Known Persons**: `["Alice", "Bob", "Dad", "Mom"]`
-   - **Cameras to Monitor**: `["front_door", "driveway"]`
-   - **Notification Service**: `mobile_app_your_phone`
-3. **Save**
-
-### 4.5 – Time-based confidence decay sensor
-
-Adds a sensor that reduces confidence over time so stale detections don't
-appear as current.  Add to `configuration.yaml` (or include via a template
-file):
-
-```yaml
-template:
-  - sensor:
-      - name: "Alice Effective Confidence"
-        unique_id: "alice_effective_confidence"
-        state: >
-          {% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}
-          {% if persons and 'Alice' in persons %}
-            {% set alice = persons['Alice'] %}
-            {% set base_conf = alice.confidence | float(0) %}
-            {% set minutes_ago = (as_timestamp(now()) - as_timestamp(alice.last_seen)) / 60 %}
-            {% if minutes_ago > 5 %}
-              {{ [base_conf * (1 - ((minutes_ago - 5) * 0.1)), 0] | max | round(2) }}
-            {% else %}
-              {{ base_conf | round(2) }}
-            {% endif %}
-          {% else %}
-            0
-          {% endif %}
-        unit_of_measurement: "%"
-```
-
-### 4.6 – Daily outdoor time report
-
-**Scenario**: At 21:00 every day, count how many times each child was detected
-and send a summary.
-
-```yaml
-# automations.yaml
-- alias: "Daily Report - Outdoor Time"
-  trigger:
-    - platform: time
-      at: "21:00:00"
-  action:
-    - service: notify.mobile_app_your_phone
-      data:
-        title: "📊 Daily Activity Report"
-        message: >
-          Today's outdoor detections:
-          Alice: {{ states('counter.alice_detections') }} times
-          Bob: {{ states('counter.bob_detections') }} times
-```
-
-Pair with `counter` helpers and an automation that increments the counter on
-each `identity/person/{name}` MQTT message.
-
-### 4.7 – Notification action handler
-
-Make the "Adult Present" and "View Camera" buttons on notifications functional:
-
-1. **Create Automation → Start with a blueprint → "Frigate Identity - Notification Action Handlers"**
-2. Fill in:
-   - **Manual Supervision Entity**: `input_boolean.manual_supervision`
-   - **Supervision Duration**: `10` minutes
-3. **Save**
-
-Create the helper entity first if needed:
-**Settings → Devices & Services → Helpers → Create Helper → Toggle**
-Name: "Manual Supervision" / Entity ID: `input_boolean.manual_supervision`
+The package file and dashboard are overwritten in-place; `configuration.yaml`
+is not touched again once packages are already enabled.
 
 ---
 
-## Part 5 – Recommended Automation Sequence
+## Part 3 – Manual Setup (Alternative)
 
-Here's the order to set things up for a full family-safety setup:
+Use this path if your HA config directory is not directly accessible.
+
+### 3a. Wire files into configuration.yaml
+
+Add `!include` directives to `/config/configuration.yaml`:
+
+```yaml
+mqtt:
+  camera: !include frigate_identity/mqtt_cameras.yaml
+
+template: !include frigate_identity/template_sensors.yaml
+
+automation: !include frigate_identity/danger_zone_automations.yaml
+```
+
+> **Tip — use HA packages instead:** Add a single `homeassistant: packages:
+> !include_dir_named packages` line once, then drop
+> `packages/frigate_identity.yaml` (generated by `--ha-config-dir`) alongside
+> it. Future re-runs only update that one package file — no further edits to
+> `configuration.yaml` ever needed.
+
+Restart Home Assistant.
+
+### 3b. Create the Lovelace dashboard
+
+1. **Settings → Dashboards → + Add dashboard**
+2. Title: `Frigate Identity` / Icon: `mdi:account-search`
+3. Open the new dashboard → **Edit ✏️** → **⋮ menu → Raw configuration editor**
+4. Select all existing content, replace with the contents of `dashboard.yaml`, click **Save**
+
+---
+
+## Part 4 – Zone-Aware Supervision (Large Yards)
+
+The supervision binary sensors generated by the script — and the
+**Supervision Detection** blueprint — use a **zone-aware** algorithm that is
+specifically designed for large yards with multiple cameras:
+
+> A child is considered supervised when any trusted adult was seen within the
+> last 60 seconds AND either **shares the same camera** OR **shares at least
+> one active Frigate zone** with the child.
+
+### Why this matters
+
+In a large yard with several overlapping camera views, a parent standing at the
+garden table may appear on `camera_patio` while a child plays near the fence
+visible on `camera_backyard`. If both cameras cover a shared Frigate zone
+(e.g. `play_area`), the child is correctly marked supervised even though they
+are on different cameras.
+
+With the old camera-only check, this situation would report "unsupervised" and
+trigger false danger-zone alerts.
+
+### Setting up zones in Frigate
+
+Define zones in your Frigate `config.yml` that reflect the physical areas:
+
+```yaml
+cameras:
+  backyard:
+    zones:
+      play_area:
+        coordinates: 100,400,800,400,800,1080,100,1080
+      near_fence:
+        coordinates: 600,0,1280,0,1280,400,600,400
+      street_view:
+        coordinates: 0,0,600,0,600,300,0,300
+
+  patio:
+    zones:
+      play_area:          # same zone name — both cameras cover this area
+        coordinates: 0,200,1280,200,1280,1080,0,1080
+```
+
+Name your `dangerous_zones` in `persons.yaml` to match these Frigate zone names:
+
+```yaml
+persons:
+  Alice:
+    role: child
+    requires_supervision: true
+    dangerous_zones: [near_fence, street_view]
+  Dad:
+    role: trusted_adult
+    can_supervise: true
+```
+
+Run the generator — it produces a supervision binary sensor for Alice that
+checks whether Dad (or any other adult) is in the same zone, plus a
+danger-zone automation that only fires when Alice is unsupervised.
+
+---
+
+## Part 5 – Available Blueprints
+
+After running with `--copy-blueprints`, five blueprints are available in
+**Settings → Automations & Scenes → Blueprints**:
+
+| Blueprint | Best for |
+|---|---|
+| **Child Danger Zone Alert** | Alert when child in dangerous zone without supervision |
+| **Vehicle with Children Outside** | Alert when vehicle detected and children are outside |
+| **Supervision Detection** | Zone-aware supervised binary sensor per child |
+| **Notification Action Handlers** | "Adult Present" / "View Camera" notification buttons |
+| **Unknown Person Alert** | Alert on low-confidence / unrecognised detections |
+
+### Creating a Danger Zone Alert (blueprint walkthrough)
+
+1. **Settings → Automations & Scenes → Create Automation**
+2. **Start with a blueprint → "Frigate Identity - Child Danger Zone Alert"**
+3. Fill in:
+   - **Child Name**: `Alice`
+   - **Dangerous Zones**: `["near_fence", "street_view"]`
+   - **Supervision Sensor**: `binary_sensor.alice_supervised`
+   - **Notification Service**: `mobile_app_your_phone`
+4. **Save** as "Alice Danger Zone Alert"
+
+Repeat for each child with their own zone list.
+
+### Creating Supervision Detection (if not using the generator)
+
+1. **Create Automation → Start with a blueprint → "Frigate Identity - Supervision Detection"**
+2. Fill in:
+   - **Child Name**: `Alice`
+   - **Trusted Adults**: `["Dad", "Mom"]`
+   - **Supervision Timeout**: `60`
+   - **Manual Override**: `input_boolean.manual_supervision`
+3. **Save**
+
+---
+
+## Part 6 – Recommended Setup Sequence
 
 ```
 Step 1  ✅  Install integration (HACS or manual)
-Step 2  ✅  Run generate_dashboard.py → wire into configuration.yaml → restart HA
-Step 3  ✅  Create Lovelace dashboard (Part 3 above)
-Step 4  ✅  Copy blueprints to /config/blueprints/automation/frigate_identity/
-Step 5  ✅  Create "Manual Supervision" helper
-Step 6  🔲  Create Supervision Detection automation for each child
-Step 7  🔲  Create Child Danger Zone Alert for each child
-Step 8  🔲  Create Curfew Alert for each child
-Step 9  🔲  Create All Children Home notification
-Step 10 🔲  Create Vehicle with Children Outside alert
-Step 11 🔲  Create Unknown Person Alert for outdoor cameras
-Step 12 🔲  Create Notification Action Handlers automation
+Step 2  ✅  Run generate_dashboard.py with --ha-config-dir + --ha-url + --ha-token + --copy-blueprints + --restart
+Step 3  ✅  Dashboard live at /lovelace/frigate-identity
+Step 4  🔲  Create "Manual Supervision" helper (Settings → Helpers → Toggle)
+Step 5  🔲  Create Notification Action Handlers automation (blueprint)
+Step 6  🔲  Edit danger_zone_automations.yaml — replace notify.notify with your service
+Step 7  🔲  Create Unknown Person Alert automation (blueprint) for outdoor cameras
+Step 8  🔲  (Optional) Create Vehicle with Children Outside alert
 ```
 
 ---
@@ -290,25 +236,34 @@ Step 12 🔲  Create Notification Action Handlers automation
 
 ### Dashboard shows "Entity not found" / grey cards
 
-The entities were not created.  Check:
-1. `configuration.yaml` includes `template_sensors.yaml` and `mqtt_cameras.yaml`
-2. HA was restarted after adding the includes
-3. **Developer Tools → States** — search for `alice_location`
+The entities were not created. Check:
+1. HA was restarted after the generator ran
+2. **Developer Tools → States** — search for `alice_location`
+3. If missing: check that `packages/frigate_identity.yaml` exists and packages
+   are enabled in `configuration.yaml`
 
-### Snapshot card is blank / no image
+### Snapshot card is blank
 
 1. The Identity Service must be running and publishing to `identity/snapshots/{person}`
-2. Check in **Developer Tools → MQTT → Listen** → subscribe to `identity/snapshots/#`
+2. **Developer Tools → MQTT → Listen** → subscribe to `identity/snapshots/#`
 3. Verify Frigate has `mqtt.crop: true` for each camera
 
-### Automation condition failing
+### Supervision always shows "off" in large yard
 
-1. Open the automation in HA → click **Traces** tab
-2. The trace shows exactly which condition failed and what values were evaluated
-3. Common fix: ensure `sensor.frigate_identity_all_persons` is updating (`Developer Tools → States`)
+Check that your Frigate zone names in `config.yml` **exactly match** the zone
+names in `persons.yaml` `dangerous_zones` and that both cameras covering the
+shared zone use the **same zone name**.
+
+### Dashboard push failed (HA YAML Lovelace mode)
+
+If you see "HA may be in YAML Lovelace mode", your Lovelace is configured via
+`lovelace:` in `configuration.yaml`. Switch to storage mode or paste
+`dashboard.yaml` manually via the Raw configuration editor.
 
 ### Blueprint not appearing in HA
 
-1. File must be in `/config/blueprints/automation/frigate_identity/` (not the custom_components subfolder)
+1. File must be in `/config/blueprints/automation/frigate_identity/`
+   (re-run with `--copy-blueprints` or copy manually)
 2. No HA restart needed — blueprints are hot-loaded
-3. Check for YAML syntax errors in the blueprint file
+3. Check for YAML syntax errors: **Developer Tools → Template** → paste the
+   blueprint YAML to check for errors

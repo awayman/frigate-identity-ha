@@ -44,20 +44,28 @@ Alerts when a vehicle is detected in the driveway while children are currently o
 
 ---
 
-### 3. Supervision Detection
+### 3. Supervision Detection *(zone-aware)*
 **File:** `supervision_detection.yaml`
 
-Creates a binary sensor that indicates if a child is currently supervised by checking if any trusted adult is on the same camera.
+Creates a binary sensor that indicates if a child is currently supervised.
+
+A child is considered supervised when any trusted adult was seen within the
+timeout window AND either:
+- shares the **same camera** as the child, OR
+- shares at least one **active Frigate zone** with the child.
+
+The zone-based check is essential for large yards where an adult and child
+may be visible on different cameras but in the same physical zone.
 
 **Inputs:**
 - Child name
 - List of trusted adults
-- Supervision timeout (seconds)
+- Supervision timeout (seconds, default 60)
 - Optional manual override entity
 
 **Features:**
-- Automatically detects adult proximity
-- Configurable timeout (default 60 seconds)
+- Zone-aware: works across multiple cameras in the same zone
+- Configurable timeout
 - Manual override option
 - Shows supervising adult in attributes
 
@@ -80,57 +88,16 @@ Handles action button presses from safety alert notifications.
 
 ---
 
-### 5. Curfew Alert
-**File:** `curfew_alert.yaml`
-
-Alerts when a child is still detected outside after a configured curfew time.
-Checks every 5 minutes between curfew time and a stop-checking time, with a
-configurable cooldown to avoid repeated alerts.
-
-**Inputs:**
-- Child name
-- Curfew time (e.g. 20:00)
-- Stop-checking time (e.g. 23:00)
-- Notification service
-- Alert cooldown (minutes)
-
-**Features:**
-- Checks repeatedly on a schedule (every 5 min) in the curfew window
-- Single-mode with cooldown to avoid alert spam
-- Notification includes last-seen camera
-
----
-
-### 6. All Children Home
-**File:** `all_children_home.yaml`
-
-Sends a confirmation notification when every child in a configured list has
-been detected on a home camera during the evening check window.
-
-**Inputs:**
-- List of children names to track
-- List of home camera names (front door, hallway, etc.)
-- Notification service
-- Start/stop checking times
-- Daily cooldown (hours)
-
-**Features:**
-- All listed children must appear on a home camera before notifying
-- Configurable time window (e.g. after school dismissal)
-- Daily cooldown prevents repeated notifications
-
----
-
-### 7. Unknown Person Alert
+### 5. Unknown Person Alert
 **File:** `unknown_person_alert.yaml`
 
-Alerts when an identity event arrives with confidence below a threshold,
-indicating someone the system could not recognise clearly.
+Alerts when a person is detected with confidence below a threshold,
+indicating someone the system could not identify clearly.
 
 **Inputs:**
 - Confidence threshold (default 0.5)
 - Known persons ignore list
-- Cameras to monitor (empty = all cameras)
+- Cameras to monitor (empty = all)
 - Notification service
 - Alert cooldown (seconds)
 
