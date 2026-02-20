@@ -2,6 +2,37 @@
 """Generate Home Assistant configuration for the Frigate Identity dashboard.
 
 This script produces ready-to-use YAML files from a list of person names.
+Person names can be supplied as positional arguments **or** read directly
+from the ``persons.yaml`` used by the Frigate Identity Service:
+
+    python generate_dashboard.py --persons-file /path/to/persons.yaml
+
+The ``persons.yaml`` format (from ``awayman/frigate_identity_service``):
+
+.. code-block:: yaml
+
+    persons:
+      Alice:
+        role: child
+        age: 5
+        requires_supervision: true
+        dangerous_zones: [street, neighbor_yard]
+        camera: backyard          # optional – used for frigate_integration mode
+      Dad:
+        role: trusted_adult
+        can_supervise: true
+        camera: driveway
+
+When ``--persons-file`` is given, person names are taken from the ``persons``
+mapping keys.  Any ``camera`` field inside a person's entry is used as the
+default camera mapping for ``--snapshot-source frigate_integration``.
+Explicit ``--cameras`` arguments always take precedence over the YAML values.
+
+You can combine both sources; positional ``PERSON`` args are merged after the
+file so they can extend or override the list:
+
+    python generate_dashboard.py --persons-file persons.yaml Grandma
+
 Use ``--snapshot-source`` to choose how the bounded snapshot is displayed:
 
 ``mqtt`` (default)
@@ -31,6 +62,9 @@ Use ``--snapshot-source`` to choose how the bounded snapshot is displayed:
 
 Usage
 -----
+    # From persons.yaml (recommended when you already have the service configured)
+    python generate_dashboard.py --persons-file /config/persons.yaml
+
     # MQTT cameras (default)
     python generate_dashboard.py Alice Bob Dad Mom
 
@@ -75,8 +109,66 @@ def _slug(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# MQTT cameras  (identity/snapshots/{person_id})
+# persons.yaml loader
 # ---------------------------------------------------------------------------
+
+def load_persons_yaml(path: str) -> tuple[list[str], dict[str, str]]:
+    """Load person names and optional camera hints from a Frigate Identity
+    Service ``persons.yaml`` file.
+
+    Expected format::
+
+        persons:
+          Alice:
+            role: child
+            camera: backyard   # optional
+          Dad:
+            role: trusted_adult
+            camera: driveway   # optional
+
+    Returns
+    -------
+    persons : list[str]
+        Person names in file order.
+    camera_map : dict[str, str]
+        Mapping of person name → camera name, populated from any ``camera``
+        fields found in the YAML.  Empty dict if none are present.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except FileNotFoundError:
+        print(f"ERROR: persons file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    except yaml.YAMLError as exc:
+        print(f"ERROR: failed to parse {path}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(data, dict) or "persons" not in data:
+        print(
+            f"ERROR: {path} must contain a top-level 'persons' mapping.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    raw = data["persons"]
+    if not isinstance(raw, dict):
+        print(
+            f"ERROR: 'persons' in {path} must be a mapping of name → attributes.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    persons: list[str] = list(raw.keys())
+    camera_map: dict[str, str] = {}
+    for name, attrs in raw.items():
+        if isinstance(attrs, dict) and attrs.get("camera"):
+            camera_map[name] = str(attrs["camera"])
+
+    return persons, camera_map
+
+
+
 
 def _build_mqtt_cameras(persons: list[str]) -> list[dict[str, Any]]:
     cameras: list[dict[str, Any]] = []
@@ -387,9 +479,24 @@ def main() -> None:
     )
     parser.add_argument(
         "persons",
-        nargs="+",
+        nargs="*",
         metavar="PERSON",
-        help="One or more person names (must match Frigate face recognition names)",
+        help=(
+            "One or more person names (must match Frigate face recognition names). "
+            "Optional when --persons-file is provided; any names given here are "
+            "appended to the list from the file."
+        ),
+    )
+    parser.add_argument(
+        "--persons-file",
+        metavar="FILE",
+        help=(
+            "Path to the Frigate Identity Service persons.yaml file. "
+            "Person names are read from the 'persons' mapping keys. "
+            "Any 'camera' field inside a person's entry is used as the default "
+            "camera mapping for --snapshot-source frigate_integration. "
+            "Explicit --cameras args take precedence over values in the file."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -419,12 +526,34 @@ def main() -> None:
         help=(
             "Person-to-camera mappings for --snapshot-source frigate_integration, "
             "e.g. Alice:backyard Bob:front_door.  "
-            "The camera name must match a Frigate camera name."
+            "The camera name must match a Frigate camera name. "
+            "These override any 'camera' values found in --persons-file."
         ),
     )
     args = parser.parse_args()
-    camera_map = _parse_camera_map(args.cameras)
-    generate(args.persons, args.output, args.snapshot_source, camera_map)
+
+    # Build persons list and camera map from --persons-file (if given)
+    yaml_persons: list[str] = []
+    yaml_camera_map: dict[str, str] = {}
+    if args.persons_file:
+        yaml_persons, yaml_camera_map = load_persons_yaml(args.persons_file)
+
+    # Merge: file names first, then any extra CLI names (deduplicating, preserving order)
+    seen: set[str] = set()
+    merged_persons: list[str] = []
+    for name in yaml_persons + list(args.persons):
+        if name not in seen:
+            seen.add(name)
+            merged_persons.append(name)
+
+    if not merged_persons:
+        parser.error("Supply at least one person name, or use --persons-file.")
+
+    # CLI --cameras override YAML camera hints
+    cli_camera_map = _parse_camera_map(args.cameras)
+    camera_map = {**yaml_camera_map, **cli_camera_map}
+
+    generate(merged_persons, args.output, args.snapshot_source, camera_map)
 
 
 if __name__ == "__main__":
