@@ -3,20 +3,21 @@ blueprint:
   description: >
     Create a binary sensor that detects if a child is supervised.
 
-    Each Frigate camera is mapped to a logical supervision zone via the
-    camera_zones input.  An adult and child are considered co-located — and
-    therefore supervised — when both were seen within the timeout window AND
-    their cameras resolve to the same zone name.
+    Zone resolution uses a three-level priority:
 
-    Example: cameras "backyard" and "patio" both map to zone "back_yard".
-    Dad on the patio is supervising Alice in the backyard because they share
-    the same logical zone.
+    1. Explicit override from camera_zones_override (for cameras not in an HA Area)
+    2. HA Area assignment — area_name('camera.<name>') resolved automatically
+    3. Camera name fallback (same-camera only)
 
-    When camera_zones is empty ({}) supervision requires the same camera,
-    which is the safe default for single-camera setups.
+    If your Frigate cameras are already assigned to Areas in Home Assistant
+    (Settings → Areas & Zones), no extra configuration is needed — the sensor
+    resolves supervision zones from HA automatically.
+
+    camera_zones_override is only needed for cameras that are NOT assigned to
+    an HA Area, or when a different grouping than the HA Area is desired.
 
     Note: Frigate zones are pixel-regions scoped to one camera and cannot be
-    used for cross-camera supervision checks — use camera_zones instead.
+    used for cross-camera supervision checks.
   domain: template
   input:
     child_name:
@@ -30,13 +31,14 @@ blueprint:
       default: ["Dad", "Mom"]
       selector:
         object:
-    camera_zones:
-      name: Camera Zone Mapping
+    camera_zones_override:
+      name: Camera Zone Overrides (Optional)
       description: >
-        Map each Frigate camera name to a logical supervision zone.
-        Cameras with the same zone name are treated as covering the same
-        physical area.  Leave empty ({}) to require the same camera.
-        Example: {backyard: back_yard, patio: back_yard, front_door: front_entry}
+        Only needed if your Frigate cameras are NOT assigned to HA Areas, or
+        you want a different grouping than the HA Area provides.
+        Map camera names to supervision zones.
+        Example: {backyard: back_yard, patio: back_yard}
+        Leave as {} if cameras are already assigned to HA Areas.
       default: {}
       selector:
         object:
@@ -66,8 +68,10 @@ binary_sensor:
         {{ false }}
       {% else %}
         {% set child_camera = persons[child_name].camera %}
-        {% set zone_map = camera_zones %}
-        {% set child_zone = zone_map.get(child_camera, child_camera) %}
+        {% set overrides = camera_zones_override %}
+        {% set child_zone = overrides.get(child_camera)
+                            or area_name('camera.' ~ child_camera)
+                            or child_camera %}
         {% set now = as_timestamp(now()) %}
         {% set adults = trusted_adults %}
         {% set supervised = namespace(value=false) %}
@@ -76,7 +80,10 @@ binary_sensor:
           {% if adult in persons %}
             {% set adult_time = as_timestamp(persons[adult].last_seen) %}
             {% if (now - adult_time) < supervision_timeout %}
-              {% set adult_zone = zone_map.get(persons[adult].camera, persons[adult].camera) %}
+              {% set adult_cam = persons[adult].camera %}
+              {% set adult_zone = overrides.get(adult_cam)
+                                  or area_name('camera.' ~ adult_cam)
+                                  or adult_cam %}
               {% if adult_zone == child_zone %}
                 {% set supervised.value = true %}
               {% endif %}
@@ -98,8 +105,10 @@ binary_sensor:
           null
         {% else %}
           {% set child_camera = persons[child_name].camera %}
-          {% set zone_map = camera_zones %}
-          {% set child_zone = zone_map.get(child_camera, child_camera) %}
+          {% set overrides = camera_zones_override %}
+          {% set child_zone = overrides.get(child_camera)
+                              or area_name('camera.' ~ child_camera)
+                              or child_camera %}
           {% set now = as_timestamp(now()) %}
           {% set adults = trusted_adults %}
 
@@ -107,7 +116,10 @@ binary_sensor:
             {% if adult in persons %}
               {% set adult_time = as_timestamp(persons[adult].last_seen) %}
               {% if (now - adult_time) < supervision_timeout %}
-                {% set adult_zone = zone_map.get(persons[adult].camera, persons[adult].camera) %}
+                {% set adult_cam = persons[adult].camera %}
+                {% set adult_zone = overrides.get(adult_cam)
+                                    or area_name('camera.' ~ adult_cam)
+                                    or adult_cam %}
                 {% if adult_zone == child_zone %}
                   {{ adult }}
                 {% endif %}

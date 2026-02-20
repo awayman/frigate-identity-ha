@@ -118,11 +118,10 @@ Restart Home Assistant.
 
 ---
 
-## Part 4 – Two-Level Zone Model for Large Yards
+## Part 4 – Zone Model for Large Yards
 
 For a child playing in a large yard covered by multiple cameras, safety
 monitoring uses **two different zone concepts** that serve distinct purposes.
-Understanding the difference is key to configuring the system correctly.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -132,11 +131,11 @@ Understanding the difference is key to configuring the system correctly.
 │  Used in: danger_zone_automations.yaml  (location trigger)       │
 │  Example: "near_fence", "outside_gate" on camera_backyard        │
 ├──────────────────────────────────────────────────────────────────┤
-│  Level 2 – camera_zones mapping  (logical supervision areas)     │
+│  Level 2 – HA Areas  (Settings → Areas & Zones in HA)            │
 │  Purpose: Is an adult in the same PHYSICAL area as the child?    │
-│  Set in:  persons.yaml  camera_zones section                     │
-│  Used in: binary_sensor.<child>_supervised  (supervision sensor) │
-│  Example: cameras backyard + patio → both in zone "back_yard"    │
+│  Set in:  Home Assistant UI – assign cameras to Areas            │
+│  Used in: binary_sensor.<child>_supervised  (via area_name())    │
+│  Example: cameras "backyard" and "patio" both in Area "Back Yard"│
 └──────────────────────────────────────────────────────────────────┘
                              ↓ combined ↓
     Alert when child is in a dangerous Frigate zone  AND  unsupervised
@@ -175,42 +174,62 @@ persons:
 When Alice's MQTT event shows `frigate_zones: [near_fence]` the generated
 automation fires — but only if the supervision sensor is also `off`.
 
-### Level 2 – `camera_zones` mapping: cross-camera supervision
+### Level 2 – HA Areas: cross-camera supervision (no extra config needed)
 
-Frigate zones **cannot be shared across cameras**.  A zone named `play_area` on
-`camera_backyard` and one named `play_area` on `camera_patio` are completely
-independent pixel regions with no relationship.
+Frigate zones **cannot be shared across cameras** — they are scoped to a single
+camera's pixel grid.  For supervision, what matters is whether an adult is in
+the **same physical area** as the child, regardless of which camera sees them.
 
-For supervision, what matters is whether an adult is in the **same physical
-area** as the child — even if they appear on a different camera.  The
-`camera_zones` mapping in `persons.yaml` defines this:
+**Home Assistant already solves this with Areas.**  If you assign your cameras
+to Areas in HA (Settings → Areas & Zones → your Area → Add Device), the
+supervision sensor uses `area_name('camera.<name>')` to resolve zones
+automatically at runtime:
 
-```yaml
-# persons.yaml — top-level section alongside persons:
-camera_zones:
-  backyard: back_yard   # cameras "backyard" and "patio" both cover the back yard
-  patio:    back_yard
-  front_door: front_entry
-  driveway:   front_entry
+```
+HA UI:  camera.backyard  →  Area: "Back Yard"
+HA UI:  camera.patio     →  Area: "Back Yard"
 ```
 
-The generated supervision sensor resolves each camera to its zone and compares:
+Generated supervision template (no dict baked in):
 
 ```jinja2
-{% set camera_zones = {'backyard': 'back_yard', 'patio': 'back_yard', ...} %}
-{% set child_zone = camera_zones.get(child_camera, child_camera) %}
-{% set adult_zone = camera_zones.get(persons[adult].camera, persons[adult].camera) %}
+{# Resolves via HA Area at runtime — no static config required #}
+{% set child_zone = area_name('camera.' ~ child_camera) or child_camera %}
+{% set adult_zone = area_name('camera.' ~ adult_cam)   or adult_cam %}
 {% if adult_zone == child_zone %}
-  {# supervised — same logical area, possibly different cameras #}
+  {# supervised — same HA Area, possibly different cameras #}
 {% endif %}
 ```
 
-Dad visible on `camera_patio` and Alice on `camera_backyard` are both in zone
-`back_yard` → Alice is supervised even though they are on different cameras.
+Dad visible on `camera_patio` and Alice on `camera_backyard` are both in Area
+`Back Yard` → Alice is supervised.  **No `camera_zones` section is required.**
 
-**When no `camera_zones` section is present**, the mapping is `{}` and
-`.get(camera, camera)` returns the camera name itself — supervision falls back
-to requiring the same camera.
+Zone resolution priority (highest to lowest):
+1. **Explicit override** in `persons.yaml` `camera_zones` section (edge cases only)
+2. **HA Area** — `area_name('camera.<name>')` resolved automatically
+3. **Camera name fallback** — same-camera supervision only
+
+### Assigning cameras to Areas in HA
+
+1. **Settings → Areas & Zones** → create an area (e.g. "Back Yard")
+2. Open the area → **Add Device** → select your Frigate camera device
+3. Repeat for all cameras; cameras covering the same physical space get the same area
+
+Once done, re-run the generator — supervision sensors will automatically use
+your area assignments without any `camera_zones` configuration.
+
+### `camera_zones` override (edge cases only)
+
+The `camera_zones` section in `persons.yaml` is still supported for cases where:
+- Cameras have no HA Area assigned yet
+- You want finer-grained grouping than your HA Area hierarchy provides
+
+```yaml
+# persons.yaml — camera_zones is OPTIONAL when cameras are assigned to HA Areas
+camera_zones:
+  backyard: back_yard    # only needed if camera.backyard has no HA Area
+  patio:    back_yard    # only needed if camera.patio has no HA Area
+```
 
 ### Complete `persons.yaml` example
 
@@ -229,32 +248,25 @@ persons:
   Dad:
     role: trusted_adult
     can_supervise: true
-    camera: patio                                 # Patio camera covers same area as backyard
+    camera: patio
 
-# Logical supervision areas (for cross-camera supervision checks).
-# This is NOT about Frigate zones — it groups cameras by physical location.
-camera_zones:
-  backyard: back_yard    # Dad on patio supervises Alice in backyard
-  patio:    back_yard    # because both map to "back_yard"
-  front_door: front_entry
-  driveway:   front_entry
+# camera_zones is NOT needed if cameras are assigned to HA Areas.
+# Only add this section for cameras without an HA Area assignment.
+# camera_zones:
+#   backyard: back_yard
+#   patio:    back_yard
 ```
 
-Running the generator with this file produces:
-- A `binary_sensor.alice_supervised` that is `on` when Dad (or Mom) is in
-  `back_yard` — regardless of which camera they appear on
+Running the generator with cameras assigned to HA Areas produces:
+- A `binary_sensor.alice_supervised` that uses `area_name()` dynamically
 - A danger-zone automation that alerts when Alice is in `near_fence` or
   `outside_gate` **and** `binary_sensor.alice_supervised` is `off`
 
 ### Blueprint: Supervision Detection
 
-When using the blueprint instead of the generator, fill in **Camera Zone Mapping**:
-
-```
-{backyard: back_yard, patio: back_yard, front_door: front_entry}
-```
-
-Leave it as `{}` for same-camera-only supervision (single-camera setups).
+The **Camera Zone Overrides** input defaults to `{}`.  Leave it empty if your
+cameras are already assigned to HA Areas — supervision is fully automatic.
+Only provide entries for cameras that have no HA Area.
 
 ---
 
@@ -331,13 +343,18 @@ The entities were not created. Check:
 
 ### Supervision always shows "off" in a multi-camera yard
 
-1. Check that `camera_zones` is present in `persons.yaml` and includes every
-   camera where children or adults might appear
-2. Verify that cameras covering the same physical area share the **same zone
-   name** in the mapping (e.g. both `backyard` and `patio` map to `back_yard`)
-3. Re-run the generator after adding `camera_zones` and restart HA
-4. In **Developer Tools → Template**, paste the supervision sensor state
-   template to evaluate it live with current person data
+1. **Check HA Area assignments**: Settings → Areas & Zones → open the area →
+   confirm both cameras (child's and adult's) are listed under that area
+2. In **Developer Tools → Template**, test the area lookup:
+   ```
+   {{ area_name('camera.backyard') }}
+   {{ area_name('camera.patio') }}
+   ```
+   Both should return the same area name.  If either returns empty, assign the
+   camera to an area in HA, or add a `camera_zones` override in `persons.yaml`
+3. If using `camera_zones` overrides, verify the camera names in the mapping
+   match the Frigate camera names exactly (case-sensitive)
+4. Re-run the generator after making changes and restart HA
 
 ### Danger zone alert not firing
 

@@ -146,16 +146,13 @@ def load_persons_yaml(
             can_supervise: true
             camera: driveway   # optional
 
-        # Optional: map each Frigate camera to a logical supervision zone.
-        # Cameras assigned the same zone name are treated as co-located so an
-        # adult on camera A is considered supervising a child on camera B when
-        # both cameras map to the same zone.  Frigate zones are per-camera and
-        # cannot be used for this cross-camera check.
+        # Optional: explicit override mapping for cameras that are NOT assigned
+        # to an HA Area, or where you want a different grouping than HA provides.
+        # When cameras ARE assigned to Areas in Home Assistant, this section is
+        # NOT required — area_name() resolves the zone automatically at runtime.
         camera_zones:
-          backyard: back_yard
-          patio: back_yard
-          front_door: front_entry
-          driveway: front_entry
+          backyard: back_yard    # override: combine with patio into one zone
+          patio: back_yard       # if these cameras share an HA Area this is redundant
 
     Returns
     -------
@@ -166,9 +163,12 @@ def load_persons_yaml(
     persons_meta : dict[str, dict[str, Any]]
         Full attribute dict per person (role, age, requires_supervision, …).
     camera_zones : dict[str, str]
-        Mapping of Frigate camera name → logical supervision zone name.
-        Empty dict when the section is absent (supervision falls back to
-        same-camera matching).
+        Optional explicit overrides mapping Frigate camera name → supervision
+        zone name.  Only needed for cameras that are **not** assigned to an HA
+        Area, or when a different grouping than the HA Area is desired.  When
+        cameras are assigned to Areas in Home Assistant the supervision sensor
+        template resolves zones automatically via ``area_name()`` without this
+        mapping.  Empty dict when the section is absent.
     """
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -238,35 +238,44 @@ def _build_supervision_binary_sensor(
 ) -> dict[str, Any]:
     """Build a HA template binary sensor tracking whether *child* is supervised.
 
-    Each camera is mapped to a logical supervision zone via *camera_zones*
-    (e.g. ``{'backyard': 'back_yard', 'patio': 'back_yard'}``).  An adult
-    is considered to be supervising the child when both were seen within the
-    last 60 seconds **and** their cameras resolve to the **same zone**.
+    Zone resolution priority (highest to lowest):
 
-    When *camera_zones* is empty the zone of a camera is its own name, which
-    means supervision falls back to requiring the same camera — exactly the
-    original behaviour.
+    1. **Explicit override** — entry in *camera_zones* for that camera name.
+    2. **HA Area** — ``area_name('camera.<name>')`` evaluated at runtime; works
+       automatically when cameras are assigned to Areas in Home Assistant.
+    3. **Camera name fallback** — camera is its own zone (same-camera only).
+
+    This means ``camera_zones`` is *not required* if your Frigate cameras are
+    already assigned to Areas in Home Assistant.  HA Areas are resolved
+    dynamically so changes in the HA UI take effect without re-running the
+    generator.
 
     Note: Frigate zones are pixel-regions scoped to a single camera and cannot
-    be used for cross-camera supervision checks.  Use *camera_zones* instead.
+    be used for cross-camera supervision checks.
     """
     slug = _slug(child)
     adults_repr = repr(adults)
-    camera_zones_repr = repr(camera_zones)
+    # Only embed the override dict — HA areas handle the rest at runtime.
+    overrides_repr = repr(camera_zones)
     state = _LiteralStr(
         "{% set persons = state_attr('sensor.frigate_identity_all_persons', 'persons') %}\n"
         f"{{% if not persons or '{child}' not in persons %}}\n"
         "  {{ false }}\n"
         "{% else %}\n"
         f"  {{% set child_camera = persons['{child}'].camera %}}\n"
-        f"  {{% set camera_zones = {camera_zones_repr} %}}\n"
-        "  {% set child_zone = camera_zones.get(child_camera, child_camera) %}\n"
+        f"  {{% set zone_overrides = {overrides_repr} %}}\n"
+        "  {% set child_zone = zone_overrides.get(child_camera)\n"
+        "                      or area_name('camera.' ~ child_camera)\n"
+        "                      or child_camera %}\n"
         "  {% set now = as_timestamp(now()) %}\n"
         "  {% set supervised = namespace(value=false) %}\n"
         f"  {{% for adult in {adults_repr} %}}\n"
         "    {% if adult in persons %}\n"
         "      {% if (now - as_timestamp(persons[adult].last_seen)) < 60 %}\n"
-        "        {% set adult_zone = camera_zones.get(persons[adult].camera, persons[adult].camera) %}\n"
+        "        {% set adult_cam = persons[adult].camera %}\n"
+        "        {% set adult_zone = zone_overrides.get(adult_cam)\n"
+        "                            or area_name('camera.' ~ adult_cam)\n"
+        "                            or adult_cam %}\n"
         "        {% if adult_zone == child_zone %}\n"
         "          {% set supervised.value = true %}\n"
         "        {% endif %}\n"

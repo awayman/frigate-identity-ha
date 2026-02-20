@@ -44,29 +44,35 @@ Alerts when a vehicle is detected in the driveway while children are currently o
 
 ---
 
-### 3. Supervision Detection *(camera-zone-aware)*
+### 3. Supervision Detection *(HA Area-aware)*
 **File:** `supervision_detection.yaml`
 
 Creates a binary sensor that indicates if a child is currently supervised.
 
-Supervision is determined by mapping each Frigate camera to a **logical zone**
-via the `camera_zones` input.  A child is supervised when any trusted adult was
-seen within the timeout window AND their cameras resolve to the **same zone**.
+Zone resolution uses a three-level priority:
+1. **Explicit override** (`camera_zones_override` input) — for cameras without an HA Area
+2. **HA Area** — `area_name('camera.<name>')` resolved automatically at runtime
+3. **Camera name fallback** — same-camera supervision only
+
+**If your Frigate cameras are already assigned to Areas in Home Assistant
+(Settings → Areas & Zones), no extra configuration is needed** — the sensor
+resolves zones from HA automatically.
 
 > **Why not Frigate zones?** Frigate zones are pixel-regions scoped to a single
 > camera.  They are not shared across cameras, so they cannot be used for
-> cross-camera supervision checks.  Use `camera_zones` instead.
+> cross-camera supervision checks.  HA Areas are the correct mechanism.
 
 **Inputs:**
 - Child name
 - List of trusted adults
-- Camera zone mapping (dict of camera → zone name; `{}` = same-camera only)
+- Camera Zone Overrides (dict, default `{}`; only needed for cameras not in an HA Area)
 - Supervision timeout (seconds, default 60)
 - Optional manual override entity
 
 **Features:**
-- Works across multiple cameras covering the same physical area
-- Falls back to same-camera matching when `camera_zones` is empty
+- Automatically uses HA Area assignments for cross-camera supervision
+- `camera_zones_override` for cameras without HA Areas
+- Falls back to same-camera matching when neither source provides a zone
 - Configurable timeout
 - Manual override option
 - Shows supervising adult in attributes

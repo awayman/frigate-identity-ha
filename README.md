@@ -87,21 +87,24 @@ The generator reads **all useful metadata** from `persons.yaml`:
 | `role: trusted_adult` or `can_supervise: true` | Listed as supervisor in all children's supervision sensors |
 | `dangerous_zones` | Danger-zone automation generated per child with those zones |
 
-An optional top-level `camera_zones` section maps Frigate cameras to logical
-supervision zones.  Cameras assigned the same zone name are treated as
-co-located, enabling cross-camera supervision in large yards:
+The supervision binary sensors automatically use **HA Area assignments**
+(`area_name('camera.<name>')`) to determine cross-camera co-location — no extra
+configuration is needed if your cameras are already assigned to Areas in
+Home Assistant (Settings → Areas & Zones).
+
+An optional top-level `camera_zones` section provides explicit overrides for
+cameras that are not assigned to HA Areas:
 
 ```yaml
+# Only needed for cameras WITHOUT an HA Area assignment:
 camera_zones:
-  backyard: back_yard   # cameras "backyard" and "patio" both cover the back yard
-  patio: back_yard
-  front_door: front_entry
-  driveway: front_entry
+  backyard: back_yard
+  patio:    back_yard
 ```
 
 > **Note:** Frigate zones are pixel-regions scoped to a single camera and
-> cannot be used for cross-camera supervision.  `camera_zones` is the correct
-> mechanism for multi-camera yards.
+> cannot be used for cross-camera supervision.  HA Areas (or `camera_zones`
+> overrides) are the correct mechanism for multi-camera yards.
 
 **Example `persons.yaml`** (from `awayman/frigate_identity_service`):
 
