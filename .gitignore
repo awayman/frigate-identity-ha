@@ -69,6 +69,10 @@ Thumbs.db
 secrets.yaml
 known_devices.yaml
 
+# Sensitive configuration
+.env
+.env.integration-test
+
 # Project specific
 config.json
 configuration.yaml
