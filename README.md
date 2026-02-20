@@ -8,6 +8,7 @@ A Home Assistant custom component that integrates with the [Frigate Identity Ser
 - **ReID continuity** - Maintains identity when faces are not visible
 - **Per-person tracking** - Track location, zones, and confidence for each person
 - **Live snapshots** - MQTT camera entities for real-time person snapshots
+- **Automated dashboard generation** - One command creates a full Lovelace dashboard with bounded snapshots and location for every tracked person
 - **Vehicle detection** - Safety alerts when vehicles detected with children outside
 - **Supervision tracking** - Monitor if children are supervised by adults
 - **Zone-aware** - Integrates with Frigate zones for safety monitoring
@@ -60,6 +61,47 @@ When you install this integration via HACS, the blueprints are automatically inc
 5. Select a Frigate Identity blueprint and configure
 
 No YAML editing required!
+
+## Dashboard Generation
+
+The `examples/generate_dashboard.py` script creates a **full Lovelace dashboard** for any set of tracked persons with a single command.  It generates three ready-to-use YAML files:
+
+| File | Purpose |
+|---|---|
+| `mqtt_cameras.yaml` | MQTT camera entities – shows the bounded snapshot published by Frigate |
+| `template_sensors.yaml` | Per-person sensors (location, confidence, zones, last-seen) |
+| `dashboard.yaml` | Complete Lovelace dashboard – one card per person |
+
+### Quick start
+
+```bash
+# Requires Python 3 and PyYAML
+pip install pyyaml
+
+# Generate config for your household (replace names with your own)
+python examples/generate_dashboard.py --output /config/frigate_identity \
+    Alice Bob Dad Mom
+```
+
+Then reference the generated files in `configuration.yaml`:
+
+```yaml
+mqtt:
+  camera: !include frigate_identity/mqtt_cameras.yaml
+
+template: !include frigate_identity/template_sensors.yaml
+```
+
+Restart Home Assistant, then go to **Settings → Dashboards → (your dashboard) → Edit → Raw configuration editor** and paste the contents of `dashboard.yaml`.
+
+Each person gets a card that shows:
+- 📸 **Bounded snapshot** – the latest cropped image from Frigate (`camera.<person>_snapshot`)
+- 📍 **Location** – which Frigate camera last detected them
+- 🗺 **Zones** – active Frigate zones
+- 🎯 **Confidence** – identification confidence score
+- 🕐 **Last Seen** – timestamp of last detection
+
+Re-run the script whenever you add or remove tracked persons to regenerate all three files.  See `examples/dashboard.yaml` for a full example output.
 
 ## Installation
 
