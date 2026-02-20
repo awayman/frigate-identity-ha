@@ -508,13 +508,90 @@ def _person_card(
     }
 
 
+def _camera_feed_card(camera_name: str) -> dict[str, Any]:
+    """Return a picture-glance card showing the live Frigate camera feed."""
+    return {
+        "type": "picture-entity",
+        "entity": f"camera.{_slug(camera_name)}",
+        "name": camera_name.replace("_", " ").title(),
+        "show_state": False,
+        "show_name": True,
+    }
+
+
+def _area_section(
+    area_name_str: str,
+    cameras_in_area: list[str],
+    persons_in_area: list[str],
+    snapshot_source: str,
+    camera_map: dict[str, str],
+    persons_meta: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a list of Lovelace cards representing one area section.
+
+    Structure:
+      - Markdown header with area name
+      - Horizontal-stack of live camera feed cards (one per unique camera)
+      - Horizontal-stack of person cards (one per identified person in area)
+    """
+    icon = "🏠"
+    if any(w in area_name_str.lower() for w in ("yard", "garden", "outdoor", "outside", "back", "front")):
+        icon = "🌳"
+    elif any(w in area_name_str.lower() for w in ("entry", "door", "drive", "garage")):
+        icon = "🚗"
+    elif any(w in area_name_str.lower() for w in ("living", "lounge", "kitchen", "bed", "bath")):
+        icon = "🏡"
+
+    cards: list[dict[str, Any]] = [
+        {
+            "type": "markdown",
+            "content": f"## {icon} {area_name_str}",
+        }
+    ]
+
+    # Camera feed row (deduplicated, preserving order)
+    seen_cams: set[str] = set()
+    unique_cams = [c for c in cameras_in_area if not (c in seen_cams or seen_cams.add(c))]  # type: ignore[func-returns-value]
+    if unique_cams:
+        feed_cards = [_camera_feed_card(c) for c in unique_cams]
+        cards.append(
+            {"type": "horizontal-stack", "cards": feed_cards}
+            if len(feed_cards) > 1
+            else feed_cards[0]
+        )
+
+    # Person cards row
+    if persons_in_area:
+        person_cards = [
+            _person_card(p, snapshot_source, camera_map, persons_meta)
+            for p in persons_in_area
+        ]
+        cards.append(
+            {"type": "horizontal-stack", "cards": person_cards}
+            if len(person_cards) > 1
+            else person_cards[0]
+        )
+
+    return cards
+
+
 def _build_view(
     persons: list[str],
     snapshot_source: str,
     camera_map: dict[str, str],
     persons_meta: dict[str, dict[str, Any]],
+    area_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Return a single Lovelace view dict (title, path, icon, cards)."""
+    """Return a single Lovelace view dict (title, path, icon, cards).
+
+    When *area_map* is provided (``{frigate_camera_name: ha_area_name}``),
+    the view is grouped by HA Area: each area gets a header, its live camera
+    feed(s), and the person cards for people in that area.  Persons whose
+    camera has no entry in *area_map* are placed in an "Unassigned" section.
+
+    When *area_map* is empty or ``None``, a flat list of person cards is
+    produced (the original behaviour).
+    """
     header_card: dict[str, Any] = {
         "type": "markdown",
         "content": (
@@ -522,9 +599,6 @@ def _build_view(
             "Real-time location and bounded snapshot for each tracked person."
         ),
     }
-    person_cards = [
-        _person_card(p, snapshot_source, camera_map, persons_meta) for p in persons
-    ]
     summary_card: dict[str, Any] = {
         "type": "entities",
         "title": "System Status",
@@ -539,11 +613,69 @@ def _build_view(
             },
         ],
     }
+
+    body_cards: list[dict[str, Any]] = []
+
+    if area_map:
+        # ----------------------------------------------------------------
+        # Area-grouped layout
+        # ----------------------------------------------------------------
+        # Determine each person's area (via their camera entry in area_map)
+        person_area: dict[str, str] = {}
+        for person in persons:
+            meta = persons_meta.get(person, {})
+            cam = str(meta.get("camera", "")) or camera_map.get(person, _slug(person))
+            person_area[person] = area_map.get(cam, "")
+
+        # Collect ordered unique area names (preserving encounter order)
+        seen_areas: set[str] = set()
+        ordered_areas: list[str] = []
+        for person in persons:
+            a = person_area[person]
+            if a and a not in seen_areas:
+                seen_areas.add(a)
+                ordered_areas.append(a)
+
+        for area in ordered_areas:
+            # Cameras in this area (from persons assigned to it)
+            cams = [
+                str(persons_meta.get(p, {}).get("camera", "")
+                    or camera_map.get(p, _slug(p)))
+                for p in persons if person_area[p] == area
+            ]
+            ppl = [p for p in persons if person_area[p] == area]
+            body_cards.extend(
+                _area_section(area, cams, ppl, snapshot_source, camera_map, persons_meta)
+            )
+
+        # Unassigned persons (camera not in any area)
+        unassigned = [p for p in persons if not person_area[p]]
+        if unassigned:
+            unassigned_cams = [
+                str(persons_meta.get(p, {}).get("camera", "")
+                    or camera_map.get(p, _slug(p)))
+                for p in unassigned
+            ]
+            body_cards.extend(
+                _area_section(
+                    "Unassigned", unassigned_cams, unassigned,
+                    snapshot_source, camera_map, persons_meta,
+                )
+            )
+    else:
+        # ----------------------------------------------------------------
+        # Flat layout (no area information available)
+        # ----------------------------------------------------------------
+        body_cards = [
+            _person_card(p, snapshot_source, camera_map, persons_meta)
+            for p in persons
+        ]
+
     return {
         "title": "Frigate Identity",
         "path": "frigate-identity",
         "icon": "mdi:account-search",
-        "cards": [header_card, *person_cards, summary_card],
+        "cards": [header_card, *body_cards, summary_card],
     }
 
 
@@ -552,9 +684,10 @@ def _build_dashboard(
     snapshot_source: str,
     camera_map: dict[str, str],
     persons_meta: dict[str, dict[str, Any]],
+    area_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return a complete HA Lovelace dashboard dict (views wrapper)."""
-    return {"views": [_build_view(persons, snapshot_source, camera_map, persons_meta)]}
+    return {"views": [_build_view(persons, snapshot_source, camera_map, persons_meta, area_map)]}
 
 
 # ---------------------------------------------------------------------------
@@ -747,6 +880,39 @@ def _ha_request(
         return None
 
 
+def _fetch_ha_camera_areas(
+    cameras: list[str], ha_url: str, ha_token: str
+) -> dict[str, str]:
+    """Query the HA template API for the Area of each Frigate camera.
+
+    Returns a ``{frigate_camera_name: ha_area_name}`` dict.  Cameras that are
+    not assigned to any HA Area are omitted from the result.
+
+    Uses a single ``POST /api/template`` call that evaluates
+    ``area_name('camera.<name>')`` for every camera and returns a JSON object.
+    """
+    if not cameras:
+        return {}
+    # Build a Jinja2 template that outputs a JSON-parseable object.
+    entries = ", ".join(
+        f'"{cam}": (area_name("camera.{cam}") | default("", true))'
+        for cam in cameras
+    )
+    template = "{{ {" + entries + "} | tojson }}"
+    raw = _ha_request("POST", ha_url, ha_token, "/api/template",
+                      {"template": template})
+    if not isinstance(raw, str):
+        return {}
+    try:
+        parsed: dict[str, str] = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        print("  ⚠️  Could not parse area_name() response from HA template API.",
+              file=sys.stderr)
+        return {}
+    # Drop cameras with no area (empty string returned by area_name())
+    return {cam: area for cam, area in parsed.items() if area}
+
+
 def _ha_push_dashboard(
     ha_url: str, ha_token: str, view: dict[str, Any]
 ) -> None:
@@ -806,6 +972,28 @@ def generate(
     print(f"Snapshot source: {snapshot_source}")
     print(f"Output directory: {output_dir}\n")
 
+    # Build area_map: camera_zones (YAML overrides) merged with HA-fetched areas.
+    # HA areas are fetched now so the dashboard can be grouped at generation time.
+    # The supervision sensor template also uses area_name() at runtime so it stays
+    # up-to-date even if area assignments change in HA after generation.
+    ha_fetched_areas: dict[str, str] = {}
+    if ha_url and ha_token:
+        unique_cameras = list(dict.fromkeys(
+            str(persons_meta.get(p, {}).get("camera", "") or camera_map.get(p, _slug(p)))
+            for p in persons
+            if persons_meta.get(p, {}).get("camera") or camera_map.get(p)
+        ))
+        if unique_cameras:
+            print("  Fetching camera area assignments from Home Assistant...")
+            ha_fetched_areas = _fetch_ha_camera_areas(unique_cameras, ha_url, ha_token)
+            if ha_fetched_areas:
+                print(f"  ✅ Areas resolved: { {c: a for c, a in ha_fetched_areas.items()} }")
+            else:
+                print("  ℹ️  No HA area assignments found — using flat dashboard layout.")
+
+    # camera_zones overrides take precedence (explicit > HA-fetched)
+    area_map: dict[str, str] = {**ha_fetched_areas, **camera_zones}
+
     if snapshot_source == "mqtt":
         _write(
             os.path.join(output_dir, "mqtt_cameras.yaml"),
@@ -820,7 +1008,7 @@ def generate(
 
     _write(
         os.path.join(output_dir, "dashboard.yaml"),
-        _dump(_build_dashboard(persons, snapshot_source, camera_map, persons_meta)),
+        _dump(_build_dashboard(persons, snapshot_source, camera_map, persons_meta, area_map)),
     )
 
     # Danger-zone automations — only when children have dangerous_zones in their meta
@@ -866,7 +1054,7 @@ def generate(
 
     if ha_url and ha_token:
         print()
-        view = _build_view(persons, snapshot_source, camera_map, persons_meta)
+        view = _build_view(persons, snapshot_source, camera_map, persons_meta, area_map)
         _ha_push_dashboard(ha_url, ha_token, view)
         if restart:
             _ha_restart(ha_url, ha_token)

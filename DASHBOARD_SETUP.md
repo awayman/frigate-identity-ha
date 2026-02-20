@@ -7,30 +7,57 @@ into Home Assistant, and setting up automations for yard safety monitoring.
 
 ## Part 1 – Generate the Configuration Files
 
-If you have a `persons.yaml` from the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service), point the generator at it:
+If you have a `persons.yaml` from the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service), point the generator at it.
+
+### With HA connection (recommended — produces area-grouped dashboard)
+
+When `--ha-url` and `--ha-token` are supplied, the generator queries HA for the
+Area of each camera and produces a dashboard **grouped by HA Area**:
 
 ```bash
 pip install pyyaml
 python examples/generate_dashboard.py \
-    --persons-file /path/to/frigate_identity_service/persons.yaml \
-    --output /config/frigate_identity
+    --persons-file /config/persons.yaml \
+    --output /config/frigate_identity \
+    --ha-url http://homeassistant.local:8123 \
+    --ha-token YOUR_LONG_LIVED_ACCESS_TOKEN
 ```
 
-Or supply person names directly:
+The dashboard will look like:
+
+```
+📍 Frigate Identity – Person Tracker
+
+🌳 Back Yard
+  [camera.backyard live feed]  [camera.patio live feed]
+  [Alice snapshot + status]    [Dad snapshot + status]  [Mom snapshot + status]
+
+🚗 Front Entry
+  [camera.front_door live feed]
+  [Bob snapshot + status]
+
+System Status
+```
+
+### Without HA connection (produces flat layout)
 
 ```bash
 python examples/generate_dashboard.py \
-    --output /config/frigate_identity \
-    Alice Bob Dad Mom
+    --persons-file /config/persons.yaml \
+    --output /config/frigate_identity
 ```
+
+Falls back to a flat list of person cards (no area grouping, no camera feeds).
+Use `camera_zones` in `persons.yaml` to get area grouping without a live HA
+connection — see [Part 4](#part-4--zone-model-for-large-yards).
 
 The generator writes these files to `/config/frigate_identity/`:
 
 | File | What it contains |
 |---|---|
 | `mqtt_cameras.yaml` | MQTT `camera` entities — one per person (bounded snapshot) |
-| `template_sensors.yaml` | Per-person location sensors + zone-aware supervision binary sensors |
-| `dashboard.yaml` | Full Lovelace dashboard YAML (proper `views:` structure) |
+| `template_sensors.yaml` | Per-person location sensors + supervision binary sensors |
+| `dashboard.yaml` | Full Lovelace dashboard YAML (area-grouped when areas are known) |
 | `danger_zone_automations.yaml` | Danger-zone automations *(only when children have `dangerous_zones`)* |
 
 ---
@@ -56,7 +83,7 @@ What each flag does:
 | Flag | What it automates |
 |---|---|
 | `--ha-config-dir /config` | Writes `packages/frigate_identity.yaml` (wires sensors/cameras/automations into HA). Patches `configuration.yaml` to enable packages if needed. |
-| `--ha-url` + `--ha-token` | Pushes the Lovelace dashboard directly via the HA REST API — no pasting required. |
+| `--ha-url` + `--ha-token` | **Fetches camera Area assignments from HA**, produces an area-grouped dashboard, then pushes it directly via the HA REST API — no pasting required. |
 | `--copy-blueprints` | Copies blueprint files to `/config/blueprints/automation/frigate_identity/`. |
 | `--restart` | Triggers a Home Assistant restart after all changes. |
 
