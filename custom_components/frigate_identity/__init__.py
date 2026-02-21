@@ -14,7 +14,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.event import async_call_later, async_track_time_change
 
 from .const import (
     CONF_AUTO_DASHBOARD,
@@ -81,8 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     async_generate_dashboard(hass, registry, config)
                 )
 
-            _debounce_handle["cancel"] = hass.helpers.event.async_call_later(
-                10, _do_regen
+            _debounce_handle["cancel"] = async_call_later(
+                hass, 10, _do_regen
             )
 
         # Regen on person list changes
@@ -127,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
 
         entry.async_on_unload(
-            hass.helpers.event.async_call_later(15, _initial_regen)
+            async_call_later(hass, 15, _initial_regen)
         )
 
     # ── Service: regenerate_dashboard ───────────────────────────────────
@@ -154,8 +154,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 # ── Blueprint deployment ────────────────────────────────────────────────
