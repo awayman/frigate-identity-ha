@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Frigate Identity",
+        "description": "Configure the MQTT connection and persons file. The integration subscribes to `{default_prefix}/person/#` for detection events.",
+        "data": {
+          "mqtt_topic_prefix": "MQTT topic prefix",
+          "persons_file": "Path to persons.yaml (optional)"
+        },
+        "data_description": {
+          "mqtt_topic_prefix": "Prefix for MQTT topics published by the Frigate Identity Service (default: identity).",
+          "persons_file": "Absolute path to the Frigate Identity Service persons.yaml file for role metadata (child/adult, dangerous zones, etc.). Leave blank to discover persons from MQTT only."
+        }
+      },
+      "options": {
+        "title": "Snapshot & Dashboard Options",
+        "data": {
+          "snapshot_source": "Snapshot source",
+          "auto_dashboard": "Auto-generate dashboard",
+          "dashboard_refresh_time": "Daily dashboard refresh time"
+        },
+        "data_description": {
+          "snapshot_source": "How to source person snapshot images. 'mqtt': MQTT camera entities. 'frigate_api': Frigate HTTP API. 'frigate_integration': Official Frigate HA integration entities.",
+          "auto_dashboard": "Automatically create and update a Lovelace dashboard view with person tracking cards.",
+          "dashboard_refresh_time": "Time of day (HH:MM) for a scheduled dashboard refresh."
+        }
+      }
+    },
+    "error": {
+      "persons_file_not_found": "Persons file not found at the specified path."
+    },
+    "abort": {
+      "already_configured": "Frigate Identity is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Frigate Identity Options",
+        "data": {
+          "mqtt_topic_prefix": "MQTT topic prefix",
+          "persons_file": "Path to persons.yaml (optional)",
+          "snapshot_source": "Snapshot source",
+          "auto_dashboard": "Auto-generate dashboard",
+          "dashboard_refresh_time": "Daily dashboard refresh time"
+        }
+      }
+    },
+    "error": {
+      "persons_file_not_found": "Persons file not found at the specified path."
+    }
+  }
+}

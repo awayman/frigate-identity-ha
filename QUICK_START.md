@@ -1,6 +1,6 @@
 # Frigate Identity - Quick Start Guide
 
-This guide will help you get Frigate Identity Service running and integrated with Home Assistant in under 30 minutes.
+This guide will help you get Frigate Identity Service running and integrated with Home Assistant in under 15 minutes.
 
 ## Prerequisites Checklist
 
@@ -8,7 +8,7 @@ This guide will help you get Frigate Identity Service running and integrated wit
 - [ ] Frigate facial recognition configured and trained
 - [ ] MQTT broker (Mosquitto) running
 - [ ] Home Assistant with MQTT integration configured
-- [ ] Python 3.9+ installed (for identity service)
+- [ ] Frigate Identity Service running and publishing to MQTT
 
 ---
 
@@ -29,10 +29,6 @@ cameras:
       crop: true              # Enable cropping!
       height: 400
       quality: 80
-      required_zones:         # Optional: only publish in these zones
-        - safe_play_area
-        - near_fence
-        - street
   
   driveway:
     mqtt:
@@ -46,48 +42,15 @@ cameras:
 
 ---
 
-## Step 2: Install Frigate Identity Service
-
-### Windows
-
-```powershell
-cd C:\Users\YourName\Documents
-git clone https://github.com/yourusername/frigate_identity_service.git
-cd frigate_identity_service
-
-# Create virtual environment
-python -m venv .venv
-& .\.venv\Scripts\Activate.ps1
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Linux/Docker
+## Step 2: Install & Run Frigate Identity Service
 
 ```bash
-git clone https://github.com/yourusername/frigate_identity_service.git
+git clone https://github.com/awayman/frigate_identity_service.git
 cd frigate_identity_service
 pip install -r requirements.txt
-
-# Or use Docker
-docker build -t frigate-identity .
 ```
 
----
-
-## Step 3: Configure Identity Service
-
-Edit the `.env` file (already created in your repo):
-
-```env
-MQTT_BROKER=192.168.1.100      # Your MQTT broker IP
-MQTT_PORT=1883
-FRIGATE_HOST=http://192.168.1.100:5000  # Your Frigate IP
-REID_SIMILARITY_THRESHOLD=0.6
-```
-
-Edit `persons.yaml` to match your family:
+Edit `.env` with your MQTT broker and Frigate details, then edit `persons.yaml`:
 
 ```yaml
 persons:
@@ -102,99 +65,68 @@ persons:
     can_supervise: true
 ```
 
----
+Start the service:
 
-## Step 4: Run Identity Service
-
-```powershell
+```bash
 python identity_service.py
 ```
 
-You should see:
-```
-Initializing embedding store...
-Initializing ReID model: osnet_x1_0
-ReID system ready!
-Connected to MQTT Broker at 192.168.1.100:1883
-Subscribed to: frigate/+/+/update
-Subscribed to: frigate/+/person/snapshot
-```
-
 ---
 
-## Step 5: Install Home Assistant Integration
-
-### Via HACS (Recommended)
+## Step 3: Install Home Assistant Integration via HACS
 
 1. Open HACS → Integrations
-2. Click ⋮ menu → Custom repositories
-3. Add: `https://github.com/yourusername/frigate-identity-ha`
-4. Category: Integration
-5. Click "Install"
+2. Click ⋮ menu → **Custom repositories**
+3. Add: `https://github.com/awayman/frigate-identity-ha`
+4. Category: **Integration**
+5. Click **Install**
 6. **Restart Home Assistant**
 
-### Manual Install
+---
 
-```bash
-cd /config
-mkdir -p custom_components/frigate_identity
-cd custom_components/frigate_identity
-# Copy files from frigate-identity-ha/custom_components/frigate_identity/
-```
+## Step 4: Add the Integration
+
+1. Go to **Settings → Devices & Services → Add Integration**
+2. Search for **"Frigate Identity"**
+3. Configure:
+   - **MQTT topic prefix**: `identity` (default)
+   - **Path to persons.yaml**: `/config/persons.yaml` (or wherever your file is)
+4. Choose options:
+   - **Snapshot source**: `mqtt` (default, recommended)
+   - **Auto-generate dashboard**: Yes
+5. **Done!**
 
 ---
 
-## Step 6: Add MQTT Camera Entities
+## What Happens Automatically
 
-Add to Home Assistant `configuration.yaml`:
+After adding the integration, everything is set up for you:
 
-```yaml
-mqtt:
-  camera:
-    - name: "Alice Snapshot"
-      unique_id: "frigate_identity_alice_snapshot"
-      topic: "identity/snapshots/Alice"
-    
-    - name: "Bob Snapshot"
-      unique_id: "frigate_identity_bob_snapshot"
-      topic: "identity/snapshots/Bob"
-    
-    - name: "Driveway Vehicle"
-      unique_id: "frigate_identity_vehicle"
-      topic: "identity/snapshots/vehicle_driveway"
-```
+### Entities Created
+- `sensor.frigate_identity_last_person` — most recently detected person
+- `sensor.frigate_identity_all_persons` — count + data for all tracked persons
+- `sensor.frigate_identity_<name>_location` — per-person location sensor (camera, zones, confidence)
+- `camera.frigate_identity_<name>_snapshot` — per-person MQTT camera with latest snapshot
+- `binary_sensor.frigate_identity_<name>_supervised` — per-child supervision tracking
+- `switch.frigate_identity_manual_supervision` — manual override for supervision
 
-**Restart Home Assistant**
+### Blueprints Deployed
+All safety automation blueprints are copied to `/config/blueprints/automation/frigate_identity/`:
+- Child Danger Zone Alert
+- Unknown Person Alert
+- Supervision Detection
+- Vehicle with Children Outside Alert
+- Notification Action Handlers
 
----
-
-## Step 7: Install Blueprints
-
-When you install this integration via HACS, blueprints are automatically included! They are located in:
-```
-<config>/custom_components/frigate_identity/blueprints/automation/frigate_identity/
-```
-
-To use the blueprints:
-
-1. **Option A (Recommended)**: Copy blueprint files from the integration directory to:
-   ```
-   /config/blueprints/automation/frigate_identity/
-   ├── child_danger_zone_alert.yaml
-   ├── vehicle_children_outside_alert.yaml
-   ├── supervision_detection.yaml
-   └── notification_action_handlers.yaml
-   ```
-
-2. **Option B**: Import directly from GitHub using the blueprint import feature
-
-3. In HA: **Settings → Automations & Scenes → Blueprints**
-
-4. Blueprints should appear automatically after copying or importing
+### Dashboard Generated
+A **Frigate Identity** view is automatically added to your Lovelace dashboard with:
+- Person snapshot cards grouped by area
+- Location, zones, confidence, and supervision status
+- System status summary
 
 ---
 
-## Step 8: Create Your First Automation
+## Step 5: Create Your First Automation
 
 1. **Settings → Automations & Scenes → Create Automation**
 2. **Start with a blueprint**
@@ -202,114 +134,62 @@ To use the blueprints:
 4. Fill in:
    - **Child Name**: `Alice`
    - **Dangerous Zones**: `["street", "neighbor_yard"]`
-   - **Notification Service**: `mobile_app_your_phone` (without "notify.")
+   - **Supervision Sensor**: `binary_sensor.frigate_identity_alice_supervised`
+   - **Notification Service**: `mobile_app_your_phone`
 5. **Save**
 
 ---
 
-## Step 9: Add Helper Entities
-
-**Settings → Devices & Services → Helpers → Create Helper**
-
-Create these input booleans:
-- `input_boolean.manual_supervision` - Manual supervision override
-- `input_boolean.front_gate_open` - Gate status (until you add sensor)
-
----
-
-## Step 10: Test the System
-
-### Test Detection
+## Step 6: Test
 
 1. Walk in front of a camera with face visible
 2. Check **Developer Tools → States**:
    - `sensor.frigate_identity_last_person` should update
    - `sensor.frigate_identity_all_persons` should show your data
-3. Check **Developer Tools → MQTT**:
-   - Listen to `identity/person/#`
-   - Should see JSON messages with your name
+3. Check the auto-generated **Frigate Identity** dashboard view
+4. Walk into a zone marked as dangerous to test safety alerts
 
-### Test Snapshot
+---
 
-1. Check `camera.alice_snapshot` (or your name) entity
-2. Should show recently cropped image of detected person
-3. Updates every ~2 seconds while person in view
+## Changing Settings
 
-### Test Safety Alert
+Go to **Settings → Devices & Services → Frigate Identity → Configure** to change:
+- MQTT topic prefix
+- persons.yaml path
+- Snapshot source
+- Dashboard auto-generation
 
-1. Walk into a zone marked as dangerous (e.g., near street)
-2. You should receive notification on your phone
-3. Check notification includes:
-   - Alert message
-   - Cropped snapshot
-   - Action buttons
+To manually refresh the dashboard, call the `frigate_identity.regenerate_dashboard` service.
 
 ---
 
 ## Troubleshooting
 
-### No Detections Appearing
+### Integration not showing sensors
 
-**Check Identity Service Logs:**
-```
-[FACE] Alice identified via facial recognition at backyard
-[EMBEDDING] Stored accurate embedding for Alice
-```
+1. Verify MQTT is configured and the identity service is publishing
+2. Check that the MQTT topic prefix matches (default: `identity`)
+3. Enable debug logging:
+   ```yaml
+   logger:
+     logs:
+       custom_components.frigate_identity: debug
+   ```
 
-If not appearing:
-1. Verify Frigate face recognition is working
-2. Check MQTT broker connectivity
-3. Verify topic subscriptions match
+### Dashboard not appearing
 
-### No Snapshots Appearing
-
-1. Check Frigate MQTT config has `crop: true`
-2. Verify snapshot topic in MQTT Explorer: `frigate/backyard/person/snapshot`
-3. Check HA camera entity subscribes to correct topic
-
-### False Positive Alerts
-
-1. Increase `REID_SIMILARITY_THRESHOLD` (try 0.7)
-2. Add supervision sensor to automation blueprint
-3. Increase alert cooldown time
-
-### Person Misidentified
-
-1. Check embedding quality (blur, lighting, angle)
-2. Retrain Frigate face recognition with more samples
-3. Lower `REID_SIMILARITY_THRESHOLD` for stricter matching
-
----
-
-## Next Steps
-
-- [ ] Set up supervision detection for each child
-- [ ] Configure vehicle detection automation
-- [ ] Add dashboard (see `examples/dashboard.yaml`)
-- [ ] Configure notification action handlers
-- [ ] Set up gate sensor integration
-- [ ] Test all dangerous zone alerts
-
----
-
-## Getting Help
-
-- **GitHub Issues**: Report bugs and request features
-- **Documentation**: See `CONFIGURATION_EXAMPLES.md` for advanced setups
-- **Logs**: Enable debug logging in HA:
-  ```yaml
-  logger:
-    logs:
-      custom_components.frigate_identity: debug
-  ```
+1. Dashboard auto-generation requires Lovelace in storage mode (the default)
+2. Call `frigate_identity.regenerate_dashboard` service to force refresh
+3. Check HA logs for dashboard push errors
 
 ---
 
 ## Success Checklist
 
-- [x] ✅ Identity service running and connected to MQTT
-- [x] ✅ Seeing person detections in HA sensors
-- [x] ✅ MQTT camera entities showing snapshots
-- [x] ✅ First safety alert automation created
-- [x] ✅ Received test notification on phone
-- [ ] 🎯 Ready to configure full safety monitoring!
+- [ ] Identity service running and connected to MQTT
+- [ ] Integration added via Settings → Integrations
+- [ ] Seeing person detections in HA sensors
+- [ ] Per-person snapshot cameras showing images
+- [ ] Frigate Identity dashboard view visible
+- [ ] First safety automation created from blueprint
+- [ ] Received test notification on phone

@@ -17,6 +17,15 @@ jobs:
       - name: Validate hacs.json
         run: python3 -c "import json; json.load(open('hacs.json'))"
 
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v1
+        with:
+          src: custom_components/frigate_identity
+
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest

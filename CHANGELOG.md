@@ -7,10 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Config flow** — add the integration via Settings → Integrations → Add (no YAML needed)
+- **Options flow** — change settings after setup without removing the integration
+- **Per-person camera entities** — MQTT camera per person created automatically
+- **Per-person location sensors** — state = current camera, attributes = zones/confidence/source
+- **Supervision binary sensors** — per-child, auto-created when persons.yaml has role data
+- **Manual supervision switch** — replaces manual `input_boolean` creation
+- **Dashboard auto-generation** — Lovelace view created and updated automatically
+- **Blueprint auto-deployment** — blueprints copied to HA's blueprints directory on load
+- **Person registry** — shared discovery from MQTT + persons.yaml metadata
+- **`frigate_identity.regenerate_dashboard` service** — manual dashboard refresh
+- **Ruff linting** in CI workflow
+
 ### Changed
-- Added CI/CD with GitHub Actions
-- Added HACS validation workflow
-- Updated hacs.json with render_readme
+- Bumped minimum HA version to 2024.1.0
+- Added `iot_class: local_push` to manifest
+- Added `pyyaml` to requirements
+- Sensors now use configurable MQTT topic prefix (default: `identity`)
+- `manifest.json` version bumped to 0.2.0
+
+### Removed
+- AppDaemon dependency no longer required (functionality absorbed into integration)
+- External `generate_dashboard.py` no longer required (kept as optional legacy CLI tool)
+- Manual blueprint copy step eliminated
+- Manual `input_boolean` helper creation no longer needed
 
 ## [0.1.1]
 
