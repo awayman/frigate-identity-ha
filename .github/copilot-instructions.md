@@ -1,4 +1,4 @@
-﻿# Copilot Instructions for Frigate Identity - Home Assistant Integration
+# Copilot Instructions for Frigate Identity - Home Assistant Integration
 
 ## Project Summary
 
