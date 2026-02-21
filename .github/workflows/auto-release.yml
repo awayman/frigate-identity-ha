@@ -1,0 +1,48 @@
+# Labels used to control the release bump type:
+#   release:major  → bumps the major version (e.g. 1.0.0 → 2.0.0)
+#   release:minor  → bumps the minor version (e.g. 1.0.0 → 1.1.0)
+#   release:patch  → bumps the patch version (e.g. 1.0.0 → 1.0.1)  [default]
+# If no release label is present the default (patch) bump is applied.
+
+name: Auto Release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine bump type and release
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | jq -e 'index("release:major")' > /dev/null; then
+            BUMP=major
+          elif echo "$LABELS" | jq -e 'index("release:minor")' > /dev/null; then
+            BUMP=minor
+          else
+            BUMP=patch
+          fi
+          echo "Bump type: $BUMP"
+          python release.py "$BUMP"
