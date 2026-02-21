@@ -1,0 +1,3 @@
+regenerate_dashboard:
+  name: Regenerate dashboard
+  description: Regenerate the Frigate Identity dashboard and related Lovelace resources.
