@@ -1,19 +1,21 @@
 {
   "domain": "frigate_identity",
   "name": "Frigate Identity",
-  "version": "0.3.4",
-  "documentation": "https://github.com/awayman/frigate-identity-ha",
-  "issue_tracker": "https://github.com/awayman/frigate-identity-ha/issues",
+  "after_dependencies": [
+    "lovelace"
+  ],
   "codeowners": [
     "@awayman"
   ],
-  "homeassistant": "2024.1.0",
-  "iot_class": "local_push",
   "config_flow": true,
   "dependencies": [
     "mqtt"
   ],
+  "documentation": "https://github.com/awayman/frigate-identity-ha",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/awayman/frigate-identity-ha/issues",
   "requirements": [
     "pyyaml>=6.0"
-  ]
+  ],
+  "version": "0.3.4"
 }

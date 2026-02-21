@@ -11,6 +11,7 @@ import shutil
 from datetime import time as dt_time
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -29,6 +30,8 @@ from .dashboard import async_generate_dashboard
 from .person_registry import PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = vol.Schema({}, extra=vol.ALLOW_EXTRA)
 
 PLATFORMS = [
     Platform.SENSOR,
