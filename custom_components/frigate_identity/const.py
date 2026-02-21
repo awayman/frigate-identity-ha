@@ -12,7 +12,7 @@ CONF_DASHBOARD_REFRESH_TIME = "dashboard_refresh_time"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_MQTT_TOPIC_PREFIX = "identity"
-DEFAULT_PERSONS_FILE = "/config/persons.yaml"
+DEFAULT_PERSONS_FILE = ""
 DEFAULT_SNAPSHOT_SOURCE = "mqtt"
 DEFAULT_AUTO_DASHBOARD = True
 DEFAULT_DASHBOARD_REFRESH_TIME = "03:00"
