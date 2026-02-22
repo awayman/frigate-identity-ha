@@ -57,6 +57,85 @@ def validate_semver(version: str) -> bool:
     return bool(re.match(r"^\d+\.\d+\.\d+$", version))
 
 
+def get_commits_since_last_tag() -> list[str]:
+    """Get commit messages since the last git tag, excluding merges and release commits."""
+    try:
+        # Get the last tag
+        last_tag = run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture=True,
+            check=False,
+        )
+        if not last_tag:
+            # No previous tags, get all commits
+            commits_output = run(
+                ["git", "log", "--no-merges", "--pretty=format:%s"],
+                capture=True,
+            )
+        else:
+            # Get commits since last tag
+            commits_output = run(
+                ["git", "log", f"{last_tag}..HEAD", "--no-merges", "--pretty=format:%s"],
+                capture=True,
+            )
+    except Exception:
+        return []
+
+    if not commits_output:
+        return []
+
+    commits = [line.strip() for line in commits_output.split("\n") if line.strip()]
+    # Filter out release commits
+    commits = [c for c in commits if not c.startswith("Release v")]
+    return commits
+
+
+def categorize_commits(commits: list[str]) -> dict[str, list[str]]:
+    """Categorize commits by conventional commit type into Keep a Changelog sections."""
+    categories = {
+        "Added": [],
+        "Changed": [],
+        "Fixed": [],
+        "Removed": [],
+    }
+
+    # Conventional commit prefixes
+    feat_pattern = r"^feat(?:\([^)]*\))?:\s*(.+)$"
+    fix_pattern = r"^fix(?:\([^)]*\))?:\s*(.+)$"
+    refactor_pattern = r"^(?:refactor|perf|change|update|style)(?:\([^)]*\))?:\s*(.+)$"
+    remove_pattern = r"^(?:remove|deprecate|revert)(?:\([^)]*\))?:\s*(.+)$"
+
+    for commit in commits:
+        # Try feat pattern
+        match = re.match(feat_pattern, commit)
+        if match:
+            categories["Added"].append(f"- {match.group(1)}")
+            continue
+
+        # Try fix pattern
+        match = re.match(fix_pattern, commit)
+        if match:
+            categories["Fixed"].append(f"- {match.group(1)}")
+            continue
+
+        # Try remove pattern
+        match = re.match(remove_pattern, commit)
+        if match:
+            categories["Removed"].append(f"- {match.group(1)}")
+            continue
+
+        # Try refactor pattern
+        match = re.match(refactor_pattern, commit)
+        if match:
+            categories["Changed"].append(f"- {match.group(1)}")
+            continue
+
+        # Default to Changed if no pattern matches
+        categories["Changed"].append(f"- {commit}")
+
+    return categories
+
+
 def update_manifest_json(new_version: str) -> None:
     """Update version in manifest.json."""
     data = json.loads(MANIFEST_JSON.read_text(encoding="utf-8"))
@@ -69,16 +148,30 @@ def update_manifest_json(new_version: str) -> None:
 
 
 def update_changelog(new_version: str) -> None:
-    """Move [Unreleased] contents to a new version section with today's date."""
+    """Move [Unreleased] contents to a new version section with today's date, populated from commit messages."""
     text = CHANGELOG.read_text(encoding="utf-8")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Replace [Unreleased] with new version, add fresh [Unreleased] section
-    new_header = f"## [Unreleased]\n\n## [{new_version}] - {today}"
+    # Get and categorize commits since last tag
+    commits = get_commits_since_last_tag()
+    categories = categorize_commits(commits)
+
+    # Build the new version section with categorized commits
+    new_version_section = f"## [{new_version}] - {today}"
+    if any(categories.values()):
+        new_version_section += "\n"
+        for category in ["Added", "Fixed", "Changed", "Removed"]:
+            if categories[category]:
+                new_version_section += f"\n### {category}\n" + "\n".join(categories[category])
+    
+    # Replace [Unreleased] with new version and add fresh [Unreleased] section
+    new_header = f"## [Unreleased]\n\n{new_version_section}"
     updated = text.replace("## [Unreleased]", new_header, 1)
 
     CHANGELOG.write_text(updated, encoding="utf-8")
     print(f"  Updated CHANGELOG.md with [{new_version}] - {today}")
+    if commits:
+        print(f"  Added {len(commits)} commit(s) from git history")
 
 
 def check_clean_working_tree() -> None:
@@ -125,9 +218,20 @@ def main() -> None:
         sys.exit(f"ERROR: Tag v{new_version} already exists")
 
     if args.dry_run:
+        commits = get_commits_since_last_tag()
+        categories = categorize_commits(commits)
         print("\n[DRY RUN] Would perform:")
         print(f"  1. Update manifest.json version to {new_version}")
         print(f"  2. Update CHANGELOG.md with [{new_version}] - {datetime.now(timezone.utc).strftime('%Y-%m-%d')}")
+        if commits:
+            print(f"     Found {len(commits)} commit(s) to add:")
+            for category in ["Added", "Fixed", "Changed", "Removed"]:
+                if categories[category]:
+                    print(f"       {category}:")
+                    for entry in categories[category]:
+                        print(f"         {entry}")
+        else:
+            print("     No commits since last tag (changelog section will be empty)")
         print(f"  3. git commit -m 'Release v{new_version}'")
         print(f"  4. git tag v{new_version}")
         print(f"  5. git push origin main --tags")
