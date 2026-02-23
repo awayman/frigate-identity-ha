@@ -72,6 +72,7 @@ known_devices.yaml
 # Sensitive configuration
 .env
 .env.integration-test
+persons.yaml
 
 # Project specific
 config.json
