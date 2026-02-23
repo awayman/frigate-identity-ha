@@ -241,23 +241,33 @@ async def async_generate_dashboard(
     view = _build_view(persons, snapshot_source, registry, area_map or None)
 
     # Push to Lovelace storage
+    _LOGGER.debug(
+        "Attempting to push dashboard: lovelace_available=%s, "
+        "persons=%d, snapshot_source=%s",
+        "lovelace" in hass.data,
+        len(persons),
+        snapshot_source,
+    )
     try:
         lovelace = hass.data.get("lovelace")
         if lovelace is None:
             _LOGGER.warning(
                 "Lovelace data not available; cannot push dashboard. "
-                "This may happen if HA uses YAML-mode dashboards."
+                "This may happen if HA uses YAML-mode dashboards. "
+                "Trying websocket fallback approach."
             )
-            return False
+            return await _push_via_ws(hass, view)
 
         # Get the config object from the lovelace integration
         config_obj = lovelace.get("config")
         if config_obj is None:
-            _LOGGER.debug("No lovelace config object found; trying direct approach")
+            _LOGGER.debug("No lovelace config object found; trying websocket approach")
             return await _push_via_ws(hass, view)
 
+        _LOGGER.debug("Lovelace config object found; loading current config")
         current = await config_obj.async_load(False)
         views: list[dict[str, Any]] = list(current.get("views", []))
+        _LOGGER.debug("Current dashboard has %d view(s)", len(views))
         views = [v for v in views if v.get("path") != "frigate-identity"]
         views.append(view)
         current["views"] = views
@@ -266,8 +276,8 @@ async def async_generate_dashboard(
         return True
 
     except Exception:  # noqa: BLE001
-        _LOGGER.debug(
-            "Could not push via lovelace storage; trying websocket approach"
+        _LOGGER.exception(
+            "Failed to push via lovelace storage; attempting websocket approach"
         )
         return await _push_via_ws(hass, view)
 
@@ -279,7 +289,26 @@ async def _push_via_ws(
     try:
         from homeassistant.components.lovelace import dashboard as ll_dashboard
 
-        for dashboard_obj in hass.data.get("lovelace_dashboards", {}).values():
+        dashboards = hass.data.get("lovelace_dashboards", {})
+        _LOGGER.debug(
+            "Websocket fallback: found %d lovelace dashboard(s)",
+            len(dashboards),
+        )
+        
+        if not dashboards:
+            _LOGGER.warning(
+                "No lovelace_dashboards found. This may indicate Lovelace "
+                "is disabled or not fully initialized."
+            )
+            return False
+        
+        for dash_name, dashboard_obj in dashboards.items():
+            _LOGGER.debug(
+                "Checking dashboard '%s' (type=%s, has_config=%s)",
+                dash_name,
+                type(dashboard_obj).__name__,
+                hasattr(dashboard_obj, "config"),
+            )
             if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
                 config = dashboard_obj.config
                 if hasattr(config, "async_load"):
@@ -293,13 +322,19 @@ async def _push_via_ws(
                         current["views"] = views
                         await config.async_save(current)
                         _LOGGER.info(
-                            "Dashboard view pushed via lovelace_dashboards"
+                            "Dashboard view pushed to dashboard '%s' via lovelace_dashboards",
+                            dash_name,
                         )
                         return True
     except Exception:  # noqa: BLE001
-        _LOGGER.warning(
-            "Failed to push Frigate Identity dashboard. "
+        _LOGGER.exception(
+            "Failed to push Frigate Identity dashboard via websocket approach. "
             "You may need to paste the view YAML manually."
         )
-
+        return False
+    
+    _LOGGER.warning(
+        "Could not find a suitable dashboard to push to. "
+        "Lovelace may not be properly configured or enabled."
+    )
     return False

@@ -220,6 +220,7 @@ class FrigateIdentityPersonLocationSensor(SensorEntity):
             "source": "unknown",
             "snapshot_url": "unavailable",
             "last_seen": "unknown",
+            "event_history": [],
         }
         self._registry = registry
         self._unsub_listener: Any = None
@@ -253,6 +254,7 @@ class FrigateIdentityPersonLocationSensor(SensorEntity):
             "source": person.source or "unknown",
             "snapshot_url": person.snapshot_url or "unavailable",
             "last_seen": person.last_seen or "unknown",
+            "event_history": person.event_history,
         }
         if person.similarity_score is not None:
             self._attr_extra_state_attributes["similarity_score"] = (

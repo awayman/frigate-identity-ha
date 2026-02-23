@@ -57,6 +57,7 @@ class PersonData:
         self.timestamp: int | None = None
         self.last_seen: str | None = None
         self.similarity_score: float | None = None
+        self.event_history: list[dict[str, Any]] = []  # Last 10 events with event_id, timestamp, camera, confidence
 
     def update_from_payload(self, payload: dict[str, Any]) -> None:
         """Update person data from an MQTT message payload."""
@@ -70,6 +71,18 @@ class PersonData:
         self.last_seen = datetime.now().isoformat()
         if payload.get("similarity_score") is not None:
             self.similarity_score = payload["similarity_score"]
+        
+        # Add to event history (circular buffer of 10)
+        if self.event_id and self.timestamp:
+            event_entry = {
+                "event_id": self.event_id,
+                "timestamp": self.timestamp,
+                "camera": self.camera,
+                "confidence": self.confidence,
+            }
+            self.event_history.insert(0, event_entry)  # Prepend (most recent first)
+            if len(self.event_history) > 10:
+                self.event_history.pop()  # Keep only 10 most recent
 
     def as_dict(self) -> dict[str, Any]:
         """Return person data as a serialisable dict."""
@@ -82,6 +95,7 @@ class PersonData:
             "snapshot_url": self.snapshot_url,
             "timestamp": self.timestamp,
             "last_seen": self.last_seen,
+            "event_history": self.event_history,
         }
         if self.similarity_score is not None:
             data["similarity_score"] = self.similarity_score
