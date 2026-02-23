@@ -1,0 +1,63 @@
+# Person Roles Configuration for Frigate Identity Service
+# Define roles, ages, and supervision requirements for each person
+
+persons:
+  # Children
+  Alice:
+    role: child
+    age: 5
+    requires_supervision: true
+    high_risk: true  # Extra monitoring for toddlers
+    dangerous_zones:
+      - street
+      - neighbor_yard
+      - near_fence
+    safe_zones:
+      - safe_play_area
+      - backyard_center
+
+  Bob:
+    role: child
+    age: 10
+    requires_supervision: false  # Old enough for some independence
+    high_risk: false
+    dangerous_zones:
+      - street
+    safe_zones:
+      - safe_play_area
+      - backyard_center
+      - near_fence
+
+  # Adults
+  Dad:
+    role: trusted_adult
+    age: 42
+    requires_supervision: false
+    can_supervise: true
+
+  Mom:
+    role: trusted_adult
+    age: 40
+    requires_supervision: false
+    can_supervise: true
+
+# Door cameras for indoor/outdoor detection
+door_cameras:
+  - back_door
+  - front_door
+  - garage_door
+
+# Zone safety configuration
+zone_safety:
+  street:
+    danger_level: critical
+    min_age: 16  # No unsupervised children under 16
+  neighbor_yard:
+    danger_level: high
+    min_age: 12
+  near_fence:
+    danger_level: medium
+    min_age: 8
+  safe_play_area:
+    danger_level: none
+    min_age: 0
