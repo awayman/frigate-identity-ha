@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.event import async_call_later, async_track_time_change
+import paho.mqtt.client as mqtt
 
 from .const import (
     CONF_AUTO_DASHBOARD,
@@ -139,6 +140,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "regenerate_dashboard", _handle_regen_service)
 
+    # ── Service: set_debug_mode ─────────────────────────────────────────
+    async def _handle_set_debug_mode(call: ServiceCall) -> None:
+        """Set debug mode for the frigate identity service."""
+        enabled = call.data.get("enabled", False)
+
+        # Get MQTT broker details from config
+        mqtt_broker = config.get("mqtt_broker", "localhost")
+        mqtt_port = config.get("mqtt_port", 1883)
+        mqtt_username = config.get("mqtt_username")
+        mqtt_password = config.get("mqtt_password")
+
+        # Publish debug control message via MQTT
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+        if mqtt_username:
+            client.username_pw_set(mqtt_username, mqtt_password)
+
+        try:
+            client.connect(mqtt_broker, mqtt_port, 60)
+            import json
+            payload = json.dumps({"enabled": enabled})
+            client.publish("frigate_identity/debug/set", payload)
+            client.disconnect()
+            _LOGGER.info("Published debug mode command: enabled=%s", enabled)
+        except Exception as e:
+            _LOGGER.error("Failed to publish debug mode command: %s", e)
+
+    hass.services.async_register(
+        DOMAIN,
+        "set_debug_mode",
+        _handle_set_debug_mode,
+        schema=vol.Schema(
+            {vol.Required("enabled"): vol.Boolean()}
+        ),
+    )
+
     # ── Reload listener ─────────────────────────────────────────────────
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -152,6 +188,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop("registry", None)
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
+        hass.services.async_remove(DOMAIN, "set_debug_mode")
     return unload_ok
 
 

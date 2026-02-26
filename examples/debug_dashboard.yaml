@@ -1,0 +1,154 @@
+title: Frigate Identity Debug Dashboard
+views:
+  - title: Debug Control
+    cards:
+      - type: entities
+        title: Debug Mode Control
+        entities:
+          - entity_id: input_boolean.frigate_identity_debug_mode
+            name: Debug Logging
+            tap_action:
+              action: toggle
+        state_color: true
+
+      - type: markdown
+        content: |
+          ## Debug Mode Instructions
+          
+          **Enabling Debug Mode:**
+          1. Toggle the switch above to enable debug logging
+          2. The identity service will save facial recognition and ReID snapshots 
+          3. After collecting data, toggle off to stop logging
+          
+          **Analysis:**
+          Run the analysis script on the debug logs:
+          ```bash
+          python analyze_debug_logs.py --debug-path /data/debug
+          ```
+          
+          This generates an HTML report with:
+          - Facial recognition vs ReID matching statistics
+          - Confidence distribution analysis
+          - Potential misidentifications (near-threshold matches)
+          - Multi-person correlation issues
+          
+          **Storage:**
+          - Snapshots stored in: `/data/debug/snapshots/`
+          - Logs stored in: `/data/debug/logs/`
+          - Retention: 7 days by default
+          - Storage usage shown below
+
+      - type: entities
+        title: Debug Storage Information
+        entities:
+          - entity_id: sensor.frigate_identity_debug_storage_mb
+            name: Debug Storage Usage (MB)
+          - entity_id: sensor.frigate_identity_recent_identifications
+            name: Recent Identifications (1 hour)
+
+  - title: Analysis Tools
+    cards:
+      - type: markdown
+        content: |
+          ## Analysis Tools
+          
+          ### HTML Report
+          After running the analysis script, open `debug_reports/report.html` in a web browser.
+          
+          The report includes:
+          - **Summary metrics** - Total events, facial recognition vs ReID ratio
+          - **Confidence analysis** - Distribution of confidence scores
+          - **Potential misidentifications** - ReID matches near threshold (0.55-0.70)
+          - **Multi-person issues** - Times when multiple persons were tracked simultaneously
+          - **Camera & Person breakdown** - Events per camera and detected persons
+          
+          ### CSV Export
+          `debug_reports/summary.csv` contains all events in tabular format for spreadsheet analysis:
+          - Timestamp
+          - Event type (Facial Recognition or ReID Match/No-Match)
+          - Camera name
+          - Identified person
+          - Confidence score
+          - Source (Frigate or ReID Model)
+          
+          ### JSON Metrics
+          `debug_reports/metrics.json` contains aggregated statistics for programmatic analysis.
+          
+          ## Common Issues & Diagnostics
+          
+          ### High ReID No-Match Rate
+          - Check `/data/debug/logs/*_reid_matches.jsonl` for "match_found: false" entries
+          - Look at best_similarity scores - if consistently below threshold, embeddings may be poor quality
+          - Check if persons are changing appearance significantly between detections
+          
+          ### Multi-Person Correlation Issues
+          - Check `/data/debug/logs/*_correlation_issues.jsonl`
+          - These indicate MQTT snapshots arrived while multiple persons were active
+          - Solution: Tune SNAPSHOT_CORRELATION_WINDOW or improve Frigate person tracking
+          
+          ### Confident Misidentifications
+          - Look for ReID matches with 0.60-0.70 confidence on wrong persons
+          - Check `potential_misidentifications` section in HTML report
+          - May indicate similar-looking persons or poor embeddings
+          - Solution: Manual re-clustering or threshold adjustment
+
+  - title: Troubleshooting
+    cards:
+      - type: markdown
+        content: |
+          ## Troubleshooting Misidentifications
+          
+          ### Step 1: Enable Debug Logging
+          1. Toggle debug mode on above
+          2. Let the system run for several hours or days
+          3. Trigger identifications of the persons you want to debug
+          
+          ### Step 2: Analyze the Logs
+          ```bash
+          cd /path/to/frigate_identity_service
+          python analyze_debug_logs.py --debug-path /data/debug --output-dir ./reports
+          ```
+          
+          ### Step 3: Review HTML Report
+          - Open `reports/report.html` in your browser
+          - Check the "Potential Misidentifications" section
+          - Review confidence distributions
+          - Look for patterns in wrong identifications
+          
+          ### Step 4: Examine Snapshots
+          ```bash
+          # View snapshots from specific date
+          ls /data/debug/snapshots/2026-02-25/
+          
+          # Photos with "reid" in name are ReID matches
+          # Photos with "no_match" didn't match anyone
+          # Photos with person name are from facial recognition
+          ```
+          
+          ### Step 5: Fine-Tune Configuration
+          
+          **Adjust ReID Threshold** (if too many misidentifications):
+          ```
+          REID_SIMILARITY_THRESHOLD=0.65  # (default: 0.60)
+          ```
+          
+          **Extend Snapshot Correlation Window** (if multi-person issues):
+          ```
+          SNAPSHOT_CORRELATION_WINDOW=3.0  # (default: 2.0)
+          ```
+          
+          **Adjust Embedding Retention** (if stale embeddings):
+          ```
+          DEBUG_RETENTION_DAYS=14  # Keep logs longer for analysis
+          ```
+          
+          ### Step 6: Disable Debug Logging
+          - Toggle debug mode off to save storage
+          - Re-run analysis to verify improvements
+          - Adjust parameters as needed
+
+services:
+  frigate_identity:
+    set_debug_mode:
+      - data:
+          enabled: true

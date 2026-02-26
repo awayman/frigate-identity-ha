@@ -1,3 +1,13 @@
 regenerate_dashboard:
   name: Regenerate dashboard
   description: Regenerate the Frigate Identity dashboard and related Lovelace resources.
+set_debug_mode:
+  name: Set debug mode
+  description: Enable or disable debug logging in the Frigate Identity Service for troubleshooting misidentifications.
+  fields:
+    enabled:
+      name: Enabled
+      description: Enable or disable debug logging
+      required: true
+      selector:
+        boolean:
