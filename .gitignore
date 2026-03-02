@@ -44,12 +44,15 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+tests/output/
 
 # Virtual environments
 venv/
 ENV/
 env/
 .venv
+.python-version
+.envrc
 
 # IDE
 .vscode/
@@ -72,7 +75,9 @@ known_devices.yaml
 # Sensitive configuration
 .env
 .env.integration-test
-persons.yaml
+.env.*
+!.env.example
+/persons.yaml
 
 # Project specific
 config.json

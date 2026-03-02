@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Update troubleshooting/debug threshold guidance to reflect the new default ReID similarity threshold of 0.75
+
 ## [0.4.0] - 2026-02-26
 
 ### Changed

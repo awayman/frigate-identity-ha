@@ -129,7 +129,7 @@ views:
           
           **Adjust ReID Threshold** (if too many misidentifications):
           ```
-          REID_SIMILARITY_THRESHOLD=0.65  # (default: 0.60)
+          REID_SIMILARITY_THRESHOLD=0.8  # (default: 0.75)
           ```
           
           **Extend Snapshot Correlation Window** (if multi-person issues):
