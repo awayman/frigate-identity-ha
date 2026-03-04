@@ -262,6 +262,8 @@ async def async_generate_dashboard(
         # Try accessing lovelace_dashboards (modern HA approach)
         dashboards = hass.data.get("lovelace_dashboards", {})
         _LOGGER.info("Found %d lovelace_dashboards in hass.data", len(dashboards))
+        if dashboards:
+            _LOGGER.info("Dashboard keys: %s", list(dashboards.keys()))
         
         if not dashboards:
             _LOGGER.warning(
@@ -269,14 +271,37 @@ async def async_generate_dashboard(
                 "this may indicate Lovelace is in YAML mode or not initialized yet."
             )
             _LOGGER.warning("Dashboard view was built but cannot be pushed to Lovelace!")
-            return False
+            _LOGGER.warning("Trying alternative lovelace access method...")
+            
+            # Try alternative access method for HA 2026+
+            lovelace_storage = hass.data.get("lovelace")
+            if lovelace_storage:
+                _LOGGER.info("Found 'lovelace' in hass.data, attempting alternative method")
+                try:
+                    # Try accessing storage directly
+                    if hasattr(lovelace_storage, "async_get_dashboard"):
+                        _LOGGER.info("Using async_get_dashboard method")
+                        dashboard = await lovelace_storage.async_get_dashboard(None)
+                        if dashboard and hasattr(dashboard, "async_load"):
+                            current = await dashboard.async_load(False)
+                            if isinstance(current, dict):
+                                views = list(current.get("views", []))
+                                views = [v for v in views if v.get("path") != "frigate-identity"]
+                                views.append(view)
+                                current["views"] = views
+                                await dashboard.async_save(current)
+                                _LOGGER.info("Dashboard updated via alternative method!")
+                                return True
+                except Exception as e:
+                    _LOGGER.error("Alternative lovelace access failed: %s", e)
+            
             return False
         
         # Try to find the main dashboard (usually key is None or "lovelace")
         for dash_key in [None, "lovelace"]:
             if dash_key in dashboards:
                 dashboard_obj = dashboards[dash_key]
-                _LOGGER.debug(
+                _LOGGER.info(
                     "Found dashboard with key '%s' (type=%s)",
                     dash_key,
                     type(dashboard_obj).__name__,
@@ -285,26 +310,31 @@ async def async_generate_dashboard(
                 if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
                     config_obj = dashboard_obj.config
                     if hasattr(config_obj, "async_load"):
-                        _LOGGER.debug("Loading current dashboard config")
+                        _LOGGER.info("Loading current dashboard config")
                         current = await config_obj.async_load(False)
                         
                         if isinstance(current, dict):
                             views: list[dict[str, Any]] = list(current.get("views", []))
-                            _LOGGER.debug("Current dashboard has %d view(s)", len(views))
+                            _LOGGER.info("Current dashboard has %d view(s)", len(views))
                             views = [v for v in views if v.get("path") != "frigate-identity"]
                             views.append(view)
                             current["views"] = views
                             await config_obj.async_save(current)
                             _LOGGER.info("Frigate Identity dashboard view updated successfully")
                             return True
+                else:
+                    _LOGGER.warning("Dashboard object missing 'config' attribute or has method signature changes")
         
         # If we didn't find the main dashboard, try all dashboards
+        _LOGGER.info("Main dashboard (None/'lovelace') not found, trying all %d dashboards", len(dashboards))
         for dash_name, dashboard_obj in dashboards.items():
-            _LOGGER.debug(
+            _LOGGER.info(
                 "Trying dashboard '%s' (type=%s)",
                 dash_name,
                 type(dashboard_obj).__name__,
             )
+            _LOGGER.debug("Dashboard object attributes: %s", dir(dashboard_obj))
+            
             if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
                 config_obj = dashboard_obj.config
                 if hasattr(config_obj, "async_load"):
@@ -320,15 +350,21 @@ async def async_generate_dashboard(
                             dash_name,
                         )
                         return True
+                else:
+                    _LOGGER.warning("Config object missing async_load method")
+            else:
+                _LOGGER.warning("Dashboard '%s' missing config attribute", dash_name)
         
-        _LOGGER.warning(
+        _LOGGER.error(
             "Could not find a suitable lovelace dashboard to update. "
-            "Lovelace may be in YAML mode or not properly initialized."
+            "Lovelace may be in YAML mode, not properly initialized, or the API has changed in HA 2026. "
+            "Check the logs above for details about available dashboards and their structure."
         )
         return False
 
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
-            "Failed to push Frigate Identity dashboard view"
+            "Failed to push Frigate Identity dashboard view. "
+            "This may indicate an API change in Home Assistant 2026."
         )
         return False
