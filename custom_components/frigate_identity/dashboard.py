@@ -12,6 +12,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar, entity_registry as er
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_SNAPSHOT_SOURCE,
@@ -323,54 +324,32 @@ async def async_generate_dashboard(
                         # If main dashboard not updated, create a dedicated Frigate Identity dashboard
                         _LOGGER.debug("  Creating dedicated 'frigate-identity' dashboard...")
                         
-                        # Try to create a new dedicated dashboard for Frigate Identity
-                        # If it exists, delete and recreate to ensure clean state
-                        if "frigate-identity" in dashboards_obj:
-                            _LOGGER.debug("    'frigate-identity' dashboard already exists, deleting to recreate fresh...")
-                            try:
-                                old_dashboard = dashboards_obj["frigate-identity"]
-                                if hasattr(old_dashboard, "async_delete"):
-                                    await old_dashboard.async_delete()
-                                del dashboards_obj["frigate-identity"]
-                                _LOGGER.debug("    ✓ Deleted old dashboard")
-                            except Exception as e:
-                                _LOGGER.debug("    Could not delete old dashboard (may not exist): %s", str(e))
+                        # For now, add the view to the default dashboard instead
+                        # Creating dedicated dashboards programmatically in HA 2026 requires
+                        # frontend interaction that we cannot reliably automate
+                        _LOGGER.info("Auto-dashboard feature: Please create a dashboard manually named 'Frigate Identity'")
+                        _LOGGER.info("The integration will automatically add the view to the default dashboard for now")
                         
-                        # Now create fresh dashboard
-                        _LOGGER.debug("    Creating fresh 'frigate-identity' dashboard...")
+                        # Try to add to default dashboard
                         try:
-                            from homeassistant.components.lovelace.dashboard import LovelaceStorage
-                            
-                            # LovelaceStorage.__init__(hass, config) expects:
-                            # - url_path: the dashboard identifier
-                            # - id: a unique id for storage
-                            # - show_in_sidebar: make it visible in sidebar
-                            dashboard_config = {
-                                "url_path": "frigate-identity",
-                                "id": "frigate-identity",  # Required by LovelaceStorage
-                                "title": "Frigate Identity",
-                                "icon": "mdi:account-search",
-                                "show_in_sidebar": True,  # Show in sidebar
-                                "require_admin": False,  # Allow all users to see it
-                            }
-                            
-                            new_dashboard = LovelaceStorage(hass, dashboard_config)
-                            dashboards_obj["frigate-identity"] = new_dashboard
-                            
-                            # Initialize the dashboard storage by loading (creates empty structure if needed)
-                            try:
-                                await new_dashboard.async_load(True)  # Force reload to initialize
-                            except Exception:
-                                pass  # May not exist yet, that's fine
-                            
-                            # Now save the view to the dashboard
-                            await new_dashboard.async_save({"views": [view]})
-                            _LOGGER.info("✅ Created fresh 'frigate-identity' dashboard with %d cards!", len(view.get("cards", [])))
-                            return True
+                            default_dash = dashboards_obj.get(None)
+                            if default_dash and hasattr(default_dash, "async_load"):
+                                current = await default_dash.async_load(False)
+                                if isinstance(current, dict):
+                                    views = list(current.get("views", []))
+                                    # Remove old frigate identity view if exists
+                                    views = [v for v in views if v.get("path") != "frigate-identity"]
+                                    # Add new view
+                                    views.append(view)
+                                    current["views"] = views
+                                    await default_dash.async_save(current)
+                                    _LOGGER.info("✅ Added Frigate Identity view to default dashboard!")
+                                    _LOGGER.info("   You can access it at the 'Frigate Identity' tab in your default dashboard")
+                                    return True
                         except Exception as e:
-                            _LOGGER.error("Could not create dedicated dashboard: %s", str(e), exc_info=True)
-                            _LOGGER.warning("Dashboard will not be created. Consider creating a 'Frigate Identity' dashboard manually in Settings → Dashboards")
-                            return False
+                            _LOGGER.error("Could not add view to default dashboard: %s", str(e), exc_info=True)
+                        
+                        return False
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     
