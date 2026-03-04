@@ -328,16 +328,23 @@ async def async_generate_dashboard(
                             _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, will create one")
                             try:
                                 from homeassistant.components.lovelace.dashboard import LovelaceStorage
+                                import uuid
                                 
-                                # Create the dashboard config with our view as the only view
+                                # LovelaceStorage.__init__(hass, config) expects:
+                                # - url_path: the dashboard identifier
+                                # - id: a unique id for storage
                                 dashboard_config = {
-                                    "views": [view]
+                                    "url_path": "frigate-identity",
+                                    "id": "frigate-identity",  # Required by LovelaceStorage
+                                    "title": "Frigate Identity",
+                                    "icon": "mdi:account-search",
                                 }
                                 
-                                # LovelaceStorage signature is: __init__(hass, config)
                                 new_dashboard = LovelaceStorage(hass, dashboard_config)
                                 dashboards_obj["frigate-identity"] = new_dashboard
                                 
+                                # Now save the view to the dashboard
+                                await new_dashboard.async_save({"views": [view]})
                                 _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard as separate tab!")
                                 return True
                             except Exception as e:
