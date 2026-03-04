@@ -327,60 +327,53 @@ async def async_generate_dashboard(
                         if "frigate-identity" not in dashboards_obj:
                             _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, will create one")
                             try:
-                                # Create a new LovelaceStorage instance for the dedicated dashboard
+                                # Create the dashboard config with our view as the only view
                                 from homeassistant.components.lovelace.dashboard import LovelaceStorage
                                 
-                                # Create the dashboard config with our view
                                 dashboard_config = {
                                     "views": [view]
                                 }
                                 
-                                # Create new LovelaceStorage object
-                                new_dashboard = LovelaceStorage(
-                                    hass=hass,
-                                    dashboard_id="frigate-identity",
-                                    yaml_path=None,
-                                    overwrite=False
-                                )
-                                dashboards_obj["frigate-identity"] = new_dashboard
-                                
-                                # Save the new dashboard
-                                await new_dashboard.async_save(dashboard_config)
-                                _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard!")
-                                return True
-                            except Exception as e:
-                                _LOGGER.debug("Could not create new dashboard: %s", str(e))
-                                _LOGGER.debug("    Falling back to adding view to existing dashboards...")
-                        
-                        # Fallback: add view to existing dashboard if dedicated one doesn't work
-                        # Try dashboards in priority order: frigate-identity (if exists) > map > others
-                        preferred_order = ["frigate-identity", "map"] + [k for k in dashboards_obj.keys() 
-                                                                          if k not in [None, "lovelace", "frigate-identity", "map"]]
-                        
-                        for dash_name in preferred_order:
-                            if dash_name not in dashboards_obj:
-                                continue
-                            dashboard = dashboards_obj[dash_name]
-                            _LOGGER.debug("    Adding view to dashboard '%s'", dash_name)
-                            if hasattr(dashboard, "async_load"):
+                                # Try different constructor signatures
+                                new_dashboard = None
                                 try:
+                                    new_dashboard = LovelaceStorage(
+                                        hass=hass,
+                                        yaml_path=None,
+                                        overwrite=False
+                                    )
+                                except TypeError:
+                                    try:
+                                        new_dashboard = LovelaceStorage(hass)
+                                    except TypeError:
+                                        # Try with explicit None arguments
+                                        new_dashboard = LovelaceStorage(hass, None, False)
+                                
+                                if new_dashboard:
+                                    dashboards_obj["frigate-identity"] = new_dashboard
+                                    await new_dashboard.async_save(dashboard_config)
+                                    _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard as separate tab!")
+                                    return True
+                            except Exception as e:
+                                _LOGGER.debug("Could not create dedicated dashboard: %s", str(e), exc_info=True)
+                                _LOGGER.warning("Dashboard will not be created. Consider creating a 'Frigate Identity' dashboard manually in Settings → Dashboards")
+                                return False
+                        else:
+                            # Dashboard already exists, add view to it
+                            try:
+                                dashboard = dashboards_obj["frigate-identity"]
+                                if hasattr(dashboard, "async_load"):
                                     current = await dashboard.async_load(False)
-                                    _LOGGER.debug("    async_load returned: type=%s", type(current).__name__)
                                     if isinstance(current, dict):
                                         views = list(current.get("views", []))
                                         views = [v for v in views if v.get("path") != "frigate-identity"]
                                         views.append(view)
                                         current["views"] = views
                                         await dashboard.async_save(current)
-                                        _LOGGER.debug("View structure: title='%s', path='%s', cards=%d", 
-                                                    view.get("title"), view.get("path"), len(view.get("cards", [])))
-                                        _LOGGER.debug("Dashboard now has %d views", len(current.get("views", [])))
-                                        _LOGGER.info("✅ Added view to existing '%s' dashboard", dash_name)
+                                        _LOGGER.info("✅ Updated 'frigate-identity' dashboard!")
                                         return True
-                                except Exception as e:
-                                    _LOGGER.debug("Failed to add view to dashboard '%s': %s", dash_name, str(e))
-                            else:
-                                _LOGGER.debug("      ✗ Dashboard '%s' has no async_load method", dash_name)
+                            except Exception as e:
+                                _LOGGER.debug("Could not update existing dashboard: %s", str(e))
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     
