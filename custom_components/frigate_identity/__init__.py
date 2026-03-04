@@ -16,7 +16,7 @@ from homeassistant.components import mqtt as mqtt_component
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
-from homeassistant.helpers.config_validation import cv
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import async_call_later, async_track_time_change
 
 from .const import (
