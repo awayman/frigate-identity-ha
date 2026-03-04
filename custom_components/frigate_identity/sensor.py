@@ -255,6 +255,8 @@ class FrigateIdentityPersonLocationSensor(SensorEntity):
             "snapshot_url": person.snapshot_url or "unavailable",
             "last_seen": person.last_seen or "unknown",
             "event_history": person.event_history,
+            "is_child": person.is_child,
+            "safe_zones": person.safe_zones,
         }
         if person.similarity_score is not None:
             self._attr_extra_state_attributes["similarity_score"] = (

@@ -16,19 +16,21 @@ from homeassistant.components import mqtt as mqtt_component
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.helpers.config_validation import cv
 from homeassistant.helpers.event import async_call_later, async_track_time_change
 
 from .const import (
+    ATTR_FRIGATE_IDENTITY_IS_CHILD,
+    ATTR_FRIGATE_IDENTITY_SAFE_ZONES,
     CONF_AUTO_DASHBOARD,
     CONF_DASHBOARD_REFRESH_TIME,
-    CONF_PERSONS_FILE,
     DEFAULT_AUTO_DASHBOARD,
     DEFAULT_DASHBOARD_REFRESH_TIME,
     DOMAIN,
     EVENT_PERSONS_UPDATED,
 )
 from .dashboard import async_generate_dashboard
-from .person_registry import PersonRegistry
+from .person_registry import PersonData, PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,9 +58,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     registry = PersonRegistry(hass)
     hass.data[DOMAIN]["registry"] = registry
 
-    persons_file = config.get(CONF_PERSONS_FILE, "")
-    if persons_file:
-        await registry.async_load_persons_yaml(persons_file)
+    # Load person metadata from HA person entities
+    await registry.async_load_persons_from_ha()
 
     # ── Blueprint auto-deploy ───────────────────────────────────────────
     await hass.async_add_executor_job(_deploy_blueprints, hass)
@@ -168,6 +169,90 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ),
     )
 
+    # ── Service: update_person_profile ──────────────────────────────────
+    async def _apply_person_profile(
+        person_name: str | None,
+        safe_zones: list[str],
+        is_child: bool | None,
+    ) -> None:
+        """Apply profile updates to registry and mirrored HA state."""
+        if not person_name:
+            _LOGGER.error("person_name is required")
+            return
+
+        person = registry._persons.get(person_name)
+        if person is None:
+            person = PersonData(person_name)
+            registry._persons[person_name] = person
+
+        person.safe_zones = list(safe_zones)
+        if is_child is not None:
+            person.is_child = bool(is_child)
+
+        person_slug = person_name.lower().replace(" ", "_")
+        person_entity_id = f"person.{person_slug}"
+        person_state = hass.states.get(person_entity_id)
+        if person_state:
+            attrs = dict(person_state.attributes)
+            attrs[ATTR_FRIGATE_IDENTITY_SAFE_ZONES] = list(safe_zones)
+            if is_child is not None:
+                attrs[ATTR_FRIGATE_IDENTITY_IS_CHILD] = bool(is_child)
+            hass.states.async_set(person_entity_id, person_state.state, attrs)
+
+        await registry._async_notify_listeners()
+        _LOGGER.info(
+            "Updated profile for %s: is_child=%s safe_zones=%s",
+            person_name,
+            person.is_child,
+            safe_zones,
+        )
+
+    async def _handle_update_person_profile(call: ServiceCall) -> None:
+        """Update child/adult profile and safe zones for a person."""
+        await _apply_person_profile(
+            person_name=call.data.get("person_name"),
+            safe_zones=list(call.data.get("safe_zones", [])),
+            is_child=call.data.get("is_child"),
+        )
+
+    # Backward-compatible alias
+    async def _handle_update_child_safe_zones(call: ServiceCall) -> None:
+        """Backward-compatible alias for updating safe zones only."""
+        await _apply_person_profile(
+            person_name=call.data.get("person_name"),
+            safe_zones=list(call.data.get("safe_zones", [])),
+            is_child=None,
+        )
+
+    hass.services.async_register(
+        DOMAIN,
+        "update_person_profile",
+        _handle_update_person_profile,
+        schema=vol.Schema(
+            {
+                vol.Required("person_name"): str,
+                vol.Optional("is_child"): bool,
+                vol.Optional("safe_zones", default=[]): vol.All(
+                    cv.ensure_list, [str]
+                ),
+            }
+        ),
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "update_child_safe_zones",
+        _handle_update_child_safe_zones,
+        schema=vol.Schema(
+            {
+                vol.Required("person_name"): str,
+                vol.Optional("safe_zones", default=[]): vol.All(
+                    cv.ensure_list, [str]
+                ),
+            }
+        ),
+    )
+
     # ── Reload listener ─────────────────────────────────────────────────
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -182,6 +267,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop("registry", None)
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
         hass.services.async_remove(DOMAIN, "set_debug_mode")
+        hass.services.async_remove(DOMAIN, "update_person_profile")
+        hass.services.async_remove(DOMAIN, "update_child_safe_zones")
     return unload_ok
 
 

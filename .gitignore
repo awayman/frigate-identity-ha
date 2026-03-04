@@ -82,3 +82,7 @@ known_devices.yaml
 # Project specific
 config.json
 configuration.yaml
+
+# Testing mockups
+DASHBOARD_MOCKUP.md
+dashboard_mockup.html

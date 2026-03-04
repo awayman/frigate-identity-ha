@@ -5,17 +5,19 @@ DOMAIN = "frigate_identity"
 
 # ── Config keys ─────────────────────────────────────────────────────────────
 CONF_MQTT_TOPIC_PREFIX = "mqtt_topic_prefix"
-CONF_PERSONS_FILE = "persons_file"
 CONF_SNAPSHOT_SOURCE = "snapshot_source"
 CONF_AUTO_DASHBOARD = "auto_dashboard"
 CONF_DASHBOARD_REFRESH_TIME = "dashboard_refresh_time"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_MQTT_TOPIC_PREFIX = "identity"
-DEFAULT_PERSONS_FILE = ""
 DEFAULT_SNAPSHOT_SOURCE = "mqtt"
 DEFAULT_AUTO_DASHBOARD = True
 DEFAULT_DASHBOARD_REFRESH_TIME = "03:00"
+
+# ── Person entity custom attributes ──────────────────────────────────────────
+ATTR_FRIGATE_IDENTITY_IS_CHILD = "frigate_identity_is_child"
+ATTR_FRIGATE_IDENTITY_SAFE_ZONES = "frigate_identity_safe_zones"
 
 # ── Snapshot source options ─────────────────────────────────────────────────
 SNAPSHOT_SOURCE_MQTT = "mqtt"

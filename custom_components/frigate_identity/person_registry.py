@@ -7,15 +7,15 @@ use to dynamically create and remove entities.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 from typing import Any
 
-import yaml
-
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    ATTR_FRIGATE_IDENTITY_IS_CHILD,
+    ATTR_FRIGATE_IDENTITY_SAFE_ZONES,
     DATA_CAMERA_ZONES,
     DATA_PERSONS,
     DATA_PERSONS_META,
@@ -58,6 +58,8 @@ class PersonData:
         self.last_seen: str | None = None
         self.similarity_score: float | None = None
         self.event_history: list[dict[str, Any]] = []  # Last 10 events with event_id, timestamp, camera, confidence
+        self.is_child: bool = False  # Mark as child for supervision logic
+        self.safe_zones: list[str] = []  # Zones where child can be alone (empty = all zones require supervision)
 
     def update_from_payload(self, payload: dict[str, Any]) -> None:
         """Update person data from an MQTT message payload."""
@@ -117,6 +119,7 @@ class PersonRegistry:
         self._meta: dict[str, dict[str, Any]] = {}
         self._camera_zones: dict[str, str] = {}
         self._listeners: list[callback] = []
+        self._discovered_zones: set[str] = set()  # Track all zones from Frigate MQTT
 
     @property
     def persons(self) -> dict[str, PersonData]:
@@ -138,27 +141,47 @@ class PersonRegistry:
         """Return camera_zones overrides from persons.yaml."""
         return self._camera_zones
 
+    @property
+    def discovered_zones(self) -> list[str]:
+        """Return sorted list of all discovered Frigate zones."""
+        return sorted(self._discovered_zones)
+
     def adults(self) -> list[str]:
         """Return names of trusted adults."""
-        return [n for n, m in self._meta.items() if is_adult(m)]
+        return [n for n, p in self._persons.items() if not p.is_child]
 
     def children(self) -> list[str]:
         """Return names of children requiring supervision."""
-        return [n for n, m in self._meta.items() if is_child(m)]
+        return [n for n, p in self._persons.items() if p.is_child]
 
-    def children_with_danger_zones(self) -> dict[str, list[str]]:
-        """Return {child_name: [dangerous_zones]} for children with danger zones."""
+    def children_with_safe_zones(self) -> dict[str, list[str]]:
+        """Return {child_name: [safe_zones]} for children with safe zones defined."""
         result: dict[str, list[str]] = {}
-        for name, meta in self._meta.items():
-            if is_child(meta):
-                zones = meta.get("dangerous_zones", [])
-                if zones:
-                    result[name] = list(zones)
+        for name, person in self._persons.items():
+            if person.is_child and person.safe_zones:
+                result[name] = list(person.safe_zones)
         return result
 
     def get_person(self, name: str) -> PersonData | None:
         """Get person data by name."""
         return self._persons.get(name)
+
+    def get_child_safe_zones(self, name: str) -> list[str]:
+        """Get safe zones for a child, or empty list if not a child."""
+        person = self._persons.get(name)
+        if person and person.is_child:
+            return person.safe_zones
+        return []
+
+    def is_child_in_safe_zone(self, name: str, current_zone: str) -> bool:
+        """Check if a child is in one of their safe zones."""
+        person = self._persons.get(name)
+        if not person or not person.is_child:
+            return False
+        # If no safe zones defined, child is not in a safe zone (requires adult)
+        if not person.safe_zones:
+            return False
+        return current_zone in person.safe_zones
 
     def register_listener(self, listener: callback) -> callback:
         """Register a callback for person list changes. Returns unregister callable."""
@@ -171,62 +194,46 @@ class PersonRegistry:
 
         return _unregister
 
-    async def async_load_persons_yaml(self, path: str) -> None:
-        """Load person metadata from a persons.yaml file."""
-        if not path:
-            _LOGGER.debug("No persons file configured; skipping metadata load")
-            return
-
-        def _load() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-            if not os.path.isfile(path):
-                _LOGGER.warning("Persons file not found: %s", path)
-                return {}, {}
-
-            with open(path, encoding="utf-8") as fh:
-                data = yaml.safe_load(fh)
-
-            if not isinstance(data, dict) or "persons" not in data:
-                _LOGGER.error("persons.yaml must contain a top-level 'persons' mapping")
-                return {}, {}
-
-            raw = data["persons"]
-            if not isinstance(raw, dict):
-                _LOGGER.error("'persons' must be a mapping of name → attributes")
-                return {}, {}
-
-            meta: dict[str, dict[str, Any]] = {}
-            for name, attrs in raw.items():
-                meta[name] = attrs if isinstance(attrs, dict) else {}
-
-            raw_cz = data.get("camera_zones")
-            camera_zones: dict[str, str] = (
-                {str(k): str(v) for k, v in raw_cz.items()}
-                if isinstance(raw_cz, dict)
-                else {}
-            )
-            return meta, camera_zones
-
-        self._meta, self._camera_zones = await self.hass.async_add_executor_job(
-            _load
-        )
-
-        # Pre-register persons from YAML so entities are created even before
-        # MQTT messages arrive
+    async def async_load_persons_from_ha(self) -> None:
+        """Load person metadata from HA person entity registry."""
+        registry = er.async_get(self.hass)
+        
+        # Look for person entities and load custom attributes
         new_persons = False
-        for name in self._meta:
-            if name not in self._persons:
-                self._persons[name] = PersonData(name)
+        for ent_id, entry in registry.entities.items():
+            if entry.domain != "person":
+                continue
+            
+            person_name = entry.name or entry.original_name
+            if not person_name:
+                continue
+                
+            # Get the person entity state
+            entity_state = self.hass.states.get(ent_id)
+            if not entity_state:
+                continue
+            
+            # Create or get person data
+            if person_name not in self._persons:
+                self._persons[person_name] = PersonData(person_name)
                 new_persons = True
-
+            
+            person = self._persons[person_name]
+            
+            # Read custom attributes from entity
+            person.is_child = entity_state.attributes.get(
+                ATTR_FRIGATE_IDENTITY_IS_CHILD, False
+            )
+            person.safe_zones = entity_state.attributes.get(
+                ATTR_FRIGATE_IDENTITY_SAFE_ZONES, []
+            )
+        
         if new_persons:
             await self._async_notify_listeners()
-
+        
         _LOGGER.info(
-            "Loaded %d person(s) from %s (adults=%s, children=%s)",
-            len(self._meta),
-            path,
-            self.adults(),
-            self.children(),
+            "Loaded %d person(s) from HA person entities",
+            len(self._persons),
         )
 
     @callback
@@ -235,9 +242,18 @@ class PersonRegistry:
         is_new = name not in self._persons
         if is_new:
             self._persons[name] = PersonData(name)
+            # Default MQTT-discovered people to trusted_adult (not child)
+            # User must explicitly configure them as children via config flow or service
+            self._persons[name].is_child = False
             _LOGGER.info("Discovered new person via MQTT: %s", name)
 
         self._persons[name].update_from_payload(payload)
+        
+        # Track discovered zones
+        zones = payload.get("frigate_zones", [])
+        if zones:
+            for zone in zones:
+                self._discovered_zones.add(zone)
 
         if is_new:
             self.hass.async_create_task(self._async_notify_listeners())

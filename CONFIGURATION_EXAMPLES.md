@@ -41,9 +41,10 @@ mqtt:
 
 ---
 
-## Per-Person Template Sensors
+## Per-Person Template Sensors (Optional)
 
-Create template sensors to extract individual person data from the "All Persons" sensor:
+The integration already creates `sensor.frigate_identity_<name>_location` entities automatically.
+Use template sensors only if you want custom aliases or extra derived attributes:
 
 ```yaml
 # configuration.yaml
@@ -125,49 +126,44 @@ template:
 
 ---
 
-## Person Roles Configuration
+## Person Profile Configuration (Home Assistant Services)
 
-Define person roles and supervision requirements:
+Use integration services to define who is a child and which zones are safe.
 
 ```yaml
-# configuration.yaml
-input_text:
-  # Person role definitions (for use in automations)
-  alice_role:
-    name: "Alice Role"
-    initial: "child"
-  
-  bob_role:
-    name: "Bob Role"
-    initial: "child"
-  
-  dad_role:
-    name: "Dad Role"
-    initial: "trusted_adult"
-  
-  mom_role:
-    name: "Mom Role"
-    initial: "trusted_adult"
+# Mark Alice as a child with allowed safe zones
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+  safe_zones:
+    - safe_play_area
+    - patio
+```
 
-input_number:
-  alice_age:
-    name: "Alice Age"
-    min: 0
-    max: 100
-    initial: 5
-  
-  bob_age:
-    name: "Bob Age"
-    min: 0
-    max: 100
-    initial: 10
+```yaml
+# Mark Dad as an adult
+service: frigate_identity.update_person_profile
+data:
+  person_name: Dad
+  is_child: false
+```
+
+```yaml
+# Backward-compatible alias: update safe zones only
+service: frigate_identity.update_child_safe_zones
+data:
+  person_name: Alice
+  safe_zones:
+    - safe_play_area
 ```
 
 ---
 
-## Supervision Detection
+## Supervision Detection (Optional Advanced)
 
-Binary sensors to detect if children are supervised:
+The integration already creates `binary_sensor.frigate_identity_<name>_supervised` entities.
+Use this section only if you want custom template behavior:
 
 ```yaml
 # configuration.yaml
@@ -257,7 +253,7 @@ input_boolean:
   description: "Alert when Alice is near the street without supervision"
   trigger:
     - platform: state
-      entity_id: sensor.alice_location
+      entity_id: sensor.frigate_identity_alice_location
   condition:
     - condition: template
       value_template: >
@@ -268,7 +264,7 @@ input_boolean:
           false
         {% endif %}
     - condition: state
-      entity_id: binary_sensor.alice_supervised
+      entity_id: binary_sensor.frigate_identity_alice_supervised
       state: "off"
   action:
     - service: notify.mobile_app_your_phone
@@ -356,42 +352,42 @@ cards:
   
   # Alice card
   - type: picture-entity
-    entity: camera.alice_snapshot
+    entity: camera.frigate_identity_alice_snapshot
     name: Alice
     show_state: true
     camera_view: live
     
   - type: entities
     entities:
-      - entity: sensor.alice_location
+      - entity: sensor.frigate_identity_alice_location
         name: Current Camera
-      - entity: binary_sensor.alice_supervised
+      - entity: binary_sensor.frigate_identity_alice_supervised
         name: Supervised
       - type: attribute
-        entity: sensor.alice_location
+        entity: sensor.frigate_identity_alice_location
         attribute: zones
         name: Zones
       - type: attribute
-        entity: sensor.alice_location
+        entity: sensor.frigate_identity_alice_location
         attribute: confidence
         name: Confidence
       - type: attribute
-        entity: sensor.alice_location
+        entity: sensor.frigate_identity_alice_location
         attribute: last_seen
         name: Last Seen
   
   # Bob card
   - type: picture-entity
-    entity: camera.bob_snapshot
+    entity: camera.frigate_identity_bob_snapshot
     name: Bob
     show_state: true
     camera_view: live
   
   - type: entities
     entities:
-      - entity: sensor.bob_location
+      - entity: sensor.frigate_identity_bob_location
         name: Current Camera
-      - entity: binary_sensor.bob_supervised
+      - entity: binary_sensor.frigate_identity_bob_supervised
         name: Supervised
   
   # Summary card

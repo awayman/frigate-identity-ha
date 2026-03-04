@@ -1,167 +1,36 @@
-# Frigate Identity – Dashboard Setup & Further Automations
+# Frigate Identity – Dashboard & Automation Setup
 
-This guide covers the end-to-end flow: generating the configuration, wiring it
-into Home Assistant, and setting up automations for yard safety monitoring.
-
----
-
-## Part 1 – Generate the Configuration Files
-
-If you have a `persons.yaml` from the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service), point the generator at it.
-
-### With HA connection (recommended — produces area-grouped dashboard)
-
-When `--ha-url` and `--ha-token` are supplied, the generator queries HA for the
-Area of each camera and produces a dashboard **grouped by HA Area**:
-
-```bash
-pip install pyyaml
-python examples/generate_dashboard.py \
-    --persons-file /config/persons.yaml \
-    --output /config/frigate_identity \
-    --ha-url http://homeassistant.local:8123 \
-    --ha-token YOUR_LONG_LIVED_ACCESS_TOKEN
-```
-
-The dashboard will look like:
-
-```
-📍 Frigate Identity – Person Tracker
-
-🌳 Back Yard
-  [camera.backyard live feed]  [camera.patio live feed]
-  [Alice snapshot + status]    [Dad snapshot + status]  [Mom snapshot + status]
-
-🚗 Front Entry
-  [camera.front_door live feed]
-  [Bob snapshot + status]
-
-System Status
-```
-
-### Without HA connection (produces flat layout)
-
-```bash
-python examples/generate_dashboard.py \
-    --persons-file /config/persons.yaml \
-    --output /config/frigate_identity
-```
-
-Falls back to a flat list of person cards (no area grouping, no camera feeds).
-Use `camera_zones` in `persons.yaml` to get area grouping without a live HA
-connection — see [Part 4](#part-4--zone-model-for-large-yards).
-
-The generator writes these files to `/config/frigate_identity/`:
-
-| File | What it contains |
-|---|---|
-| `mqtt_cameras.yaml` | MQTT `camera` entities — one per person (bounded snapshot) |
-| `template_sensors.yaml` | Per-person location sensors + supervision binary sensors |
-| `dashboard.yaml` | Full Lovelace dashboard YAML (area-grouped when areas are known) |
-| `danger_zone_automations.yaml` | Danger-zone automations *(only when children have `dangerous_zones`)* |
+This guide covers dashboard generation, person profile configuration, and safety
+automations for yard monitoring with Frigate Identity.
 
 ---
 
-## Part 2 – Automated One-Command Setup (Recommended)
+## Overview
 
-If your HA `/config` directory is accessible (HA OS, Container, or SSH), you
-can let the generator configure **everything** in a single command:
+The Frigate Identity integration provides **automatic dashboard generation** with
+no manual file editing required. The dashboard:
 
-```bash
-python examples/generate_dashboard.py \
-    --persons-file /config/persons.yaml \
-    --output /config/frigate_identity \
-    --ha-config-dir /config \
-    --ha-url http://homeassistant.local:8123 \
-    --ha-token YOUR_LONG_LIVED_ACCESS_TOKEN \
-    --copy-blueprints \
-    --restart
-```
+- ✅ **Auto-generates** on integration setup and daily refresh
+- ✅ **Groups by HA Area** when cameras are assigned to areas
+- ✅ **Updates automatically** when persons are detected or areas change
+- ✅ **Persists** in storage mode at `/lovelace/frigate-identity`
 
-What each flag does:
-
-| Flag | What it automates |
-|---|---|
-| `--ha-config-dir /config` | Writes `packages/frigate_identity.yaml` (wires sensors/cameras/automations into HA). Patches `configuration.yaml` to enable packages if needed. |
-| `--ha-url` + `--ha-token` | **Fetches camera Area assignments from HA**, produces an area-grouped dashboard, then pushes it directly via the HA REST API — no pasting required. |
-| `--copy-blueprints` | Copies blueprint files to `/config/blueprints/automation/frigate_identity/`. |
-| `--restart` | Triggers a Home Assistant restart after all changes. |
-
-**Getting a long-lived access token:**
-In HA → Profile (bottom-left) → Security tab → Long-Lived Access Tokens → Create.
-
-After the restart, the Frigate Identity view is live at `/lovelace/frigate-identity`.
-
-### Re-running after changes
-
-When you update `persons.yaml` (add/remove a person), just re-run:
-
-```bash
-python examples/generate_dashboard.py \
-    --persons-file /config/persons.yaml \
-    --output /config/frigate_identity \
-    --ha-config-dir /config \
-    --ha-url http://homeassistant.local:8123 \
-    --ha-token YOUR_TOKEN \
-    --restart
-```
-
-The package file and dashboard are overwritten in-place; `configuration.yaml`
-is not touched again once packages are already enabled.
+**Key Features:**
+- Per-person camera feeds and snapshot cards
+- Real-time location and status tracking
+- HA Area-based grouping for multi-camera spaces
+- Manual dashboard regeneration via service call
 
 ---
 
-## Part 3 – Manual Setup (Alternative)
+## Part 1 – Automatic Dashboard Generation
 
-Use this path if your HA config directory is not directly accessible.
+The integration **automatically generates and maintains** your dashboard without
+any manual file editing or script execution.
 
-### 3a. Wire files into configuration.yaml
+### Configuration Options
 
-Add `!include` directives to `/config/configuration.yaml`:
-
-```yaml
-mqtt:
-  camera: !include frigate_identity/mqtt_cameras.yaml
-
-template: !include frigate_identity/template_sensors.yaml
-
-automation: !include frigate_identity/danger_zone_automations.yaml
-```
-
-> **Tip — use HA packages instead:** Add a single `homeassistant: packages:
-> !include_dir_named packages` line once, then drop
-> `packages/frigate_identity.yaml` (generated by `--ha-config-dir`) alongside
-> it. Future re-runs only update that one package file — no further edits to
-> `configuration.yaml` ever needed.
-
-Restart Home Assistant.
-
-### 3b. Create the Lovelace dashboard
-
-1. **Settings → Dashboards → + Add dashboard**
-2. Title: `Frigate Identity` / Icon: `mdi:account-search`
-3. Open the new dashboard → **Edit ✏️** → **⋮ menu → Raw configuration editor**
-4. Select all existing content, replace with the contents of `dashboard.yaml`, click **Save**
-
----
-
-## Part 3b – Auto-Generated Dashboard & Snapshot History
-
-### Autogenerated Dashboard (Built-in Integration Feature)
-
-Unlike the `generate_dashboard.py` script which requires manual setup, the
-Frigate Identity integration can **automatically generate and push a dashboard**
-directly to Home Assistant when configured.
-
-**Advantages:**
-- ✅ One-click setup: no scripts to run, no files to paste
-- ✅ Auto-updates when persons are added/removed
-- ✅ Respects HA Area grouping automatically
-- ✅ No external tools required
-
-**Configuration:**
-
-The integration provides these options in the config entry:
+Configure dashboard generation via **Settings → Devices & Services → Frigate Identity → Configure:**
 
 | Option | Default | What it controls |
 |---|---|---|
@@ -169,11 +38,24 @@ The integration provides these options in the config entry:
 | `dashboard_refresh_time` | `03:00` | Daily refresh time (HH:MM) |
 | `snapshot_source` | `mqtt` | Where to pull snapshots: `mqtt`, `frigate_api`, or `frigate_integration` |
 
-After setup, the dashboard appears at `/lovelace/frigate-identity` and updates whenever:
-- A new person is detected
-- HA Area assignments change
-- The daily refresh time is reached
-- You manually call the `frigate_identity.regenerate_dashboard` service
+After setup, the dashboard appears at `/lovelace/frigate-identity` and updates automatically when:
+- A new person is detected via MQTT
+- HA Area assignments change for cameras
+- The daily refresh time is reached (default: 03:00)
+- You manually call `frigate_identity.regenerate_dashboard`
+
+### Manual Dashboard Regeneration
+
+To force an immediate dashboard update:
+
+```yaml
+service: frigate_identity.regenerate_dashboard
+```
+
+Useful after:
+- Changing camera area assignments
+- Modifying person profiles
+- Integration option changes
 
 ### Troubleshooting Autogenerated Dashboard
 
@@ -214,11 +96,12 @@ service: frigate_identity.regenerate_dashboard
   3. Check if you have many dashboards; try deleting unused ones to reduce initialization time
 
 **Common error: "No persons registered"**
-- **Cause:** No persons have been detected yet, or `persons.yaml` hasn't been loaded
+- **Cause:** No persons have been detected yet via MQTT
 - **Solution:**
-  1. Ensure `persons.yaml` file path is configured in the integration options
-  2. Wait for at least one MQTT detection from Frigate Identity Service
-  3. Call the service manually once a person has been detected
+  1. Verify Frigate Identity Service is running and publishing to MQTT
+  2. Check MQTT topic prefix matches integration configuration (default: `identity`)
+  3. Wait for at least one MQTT detection from Frigate Identity Service
+  4. Call `frigate_identity.regenerate_dashboard` manually once a person is detected
 
 ### Snapshot History
 
@@ -348,35 +231,73 @@ Change via integration options:
 
 ---
 
-## Part 4 – Zone Model for Large Yards
+## Part 2 – Person Profile Configuration
 
-For a child playing in a large yard covered by multiple cameras, safety
-monitoring uses **two different zone concepts** that serve distinct purposes.
+Person profiles (child status, safe zones) are configured via **Home Assistant services**,
+without editing any YAML files.
+
+### Configuring Children and Safe Zones
+
+**Mark a person as a child:**
+
+```yaml
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+```
+
+**Configure safe zones for a child:**
+
+```yaml
+service: frigate_identity.update_child_safe_zones
+data:
+  child_name: Alice
+  safe_zones:
+    - backyard
+    - patio
+```
+
+**Update both child status and safe zones:**
+
+```yaml
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+  safe_zones:
+    - backyard
+    - patio
+```
+
+### Zone Model for Multi-Camera Supervision
+
+For children in large yards covered by multiple cameras, safety monitoring uses
+**two different zone concepts**:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  Level 1 – Frigate camera zones  (per-camera pixel regions)      │
 │  Purpose: WHERE is the child within the camera view?             │
-│  Set in:  persons.yaml  dangerous_zones                          │
-│  Used in: danger_zone_automations.yaml  (location trigger)       │
+│  Set in:  Frigate config (frigate/config.yml)                    │
+│  Used in: Safe zone checking (via services)                      │
 │  Example: "near_fence", "outside_gate" on camera_backyard        │
 ├──────────────────────────────────────────────────────────────────┤
 │  Level 2 – HA Areas  (Settings → Areas & Zones in HA)            │
 │  Purpose: Is an adult in the same PHYSICAL area as the child?    │
 │  Set in:  Home Assistant UI – assign cameras to Areas            │
-│  Used in: binary_sensor.<child>_supervised  (via area_name())    │
+│  Used in: binary_sensor.frigate_identity_<child>_supervised      │
 │  Example: cameras "backyard" and "patio" both in Area "Back Yard"│
 └──────────────────────────────────────────────────────────────────┘
                              ↓ combined ↓
-    Alert when child is in a dangerous Frigate zone  AND  unsupervised
+    Alert when child is in an unsafe Frigate zone  AND  unsupervised
 ```
 
-### Level 1 – Frigate camera zones: dangerous location detection
+### Level 1 – Frigate Camera Zones (Safe Zone Configuration)
 
-Frigate zones are **pixel-region annotations on a single camera**.  They are
-the right tool for detecting *where within a camera view* a child is.
+Frigate zones are **pixel-region annotations on a single camera**, defined in Frigate's config.
 
-For example, on `camera_backyard` you might define:
+Example Frigate zone definition:
 
 ```yaml
 # frigate/config.yml
@@ -391,39 +312,39 @@ cameras:
         coordinates: 900,0,1280,0,1280,200,900,200      # outside the gate – danger!
 ```
 
-These zone names go in `persons.yaml` as `dangerous_zones`:
+Configure which zones are **safe** for a child using the service:
 
 ```yaml
-persons:
-  Alice:
-    role: child
-    requires_supervision: true
-    dangerous_zones: [near_fence, outside_gate]   # Frigate zone names on camera_backyard
+service: frigate_identity.update_child_safe_zones
+data:
+  child_name: Alice
+  safe_zones:
+    - play_area  # Alice is safe in play_area
+    # near_fence and outside_gate are NOT in the list = unsafe
 ```
 
-When Alice's MQTT event shows `frigate_zones: [near_fence]` the generated
-automation fires — but only if the supervision sensor is also `off`.
+The integration monitors `frigate_zones` in MQTT events. When Alice is detected in
+`near_fence` or `outside_gate`, the supervision sensor evaluates whether she's supervised.
 
-### Level 2 – HA Areas: cross-camera supervision (no extra config needed)
+### Level 2 – HA Areas (Cross-Camera Supervision)
 
-Frigate zones **cannot be shared across cameras** — they are scoped to a single
-camera's pixel grid.  For supervision, what matters is whether an adult is in
-the **same physical area** as the child, regardless of which camera sees them.
+Frigate zones are scoped to a single camera. For supervision, what matters is whether
+an adult is in the **same physical area** as the child, regardless of which camera sees them.
 
-**Home Assistant already solves this with Areas.**  If you assign your cameras
-to Areas in HA (Settings → Areas & Zones → your Area → Add Device), the
-supervision sensor uses `area_name('camera.<name>')` to resolve zones
-automatically at runtime:
+**Home Assistant Areas** solve this automatically. Assign your cameras to HA Areas:
 
+**Settings → Areas & Zones → your Area → Add Device**
+
+Example:
 ```
 HA UI:  camera.backyard  →  Area: "Back Yard"
 HA UI:  camera.patio     →  Area: "Back Yard"
 ```
 
-Generated supervision template (no dict baked in):
+The supervision sensor uses `area_name('camera.<name>')` to resolve areas at runtime:
 
 ```jinja2
-{# Resolves via HA Area at runtime — no static config required #}
+{# Supervision template (built into integration) #}
 {% set child_zone = area_name('camera.' ~ child_camera) or child_camera %}
 {% set adult_zone = area_name('camera.' ~ adult_cam)   or adult_cam %}
 {% if adult_zone == child_zone %}
@@ -431,79 +352,60 @@ Generated supervision template (no dict baked in):
 {% endif %}
 ```
 
-Dad visible on `camera_patio` and Alice on `camera_backyard` are both in Area
-`Back Yard` → Alice is supervised.  **No `camera_zones` section is required.**
+If Dad is visible on `camera.patio` and Alice on `camera.backyard`, both in Area
+`Back Yard` → Alice is supervised. **No manual configuration required.**
 
-Zone resolution priority (highest to lowest):
-1. **Explicit override** in `persons.yaml` `camera_zones` section (edge cases only)
-2. **HA Area** — `area_name('camera.<name>')` resolved automatically
-3. **Camera name fallback** — same-camera supervision only
+### Assigning Cameras to HA Areas
 
-### Assigning cameras to Areas in HA
-
-1. **Settings → Areas & Zones** → create an area (e.g. "Back Yard")
+1. **Settings → Areas & Zones** → create an area (e.g., "Back Yard")
 2. Open the area → **Add Device** → select your Frigate camera device
-3. Repeat for all cameras; cameras covering the same physical space get the same area
+3. Repeat for all cameras covering the same physical space
 
-Once done, re-run the generator — supervision sensors will automatically use
-your area assignments without any `camera_zones` configuration.
+Supervision sensors automatically use area assignments — no additional configuration needed.
 
-### `camera_zones` override (edge cases only)
+### Complete Configuration Example
 
-The `camera_zones` section in `persons.yaml` is still supported for cases where:
-- Cameras have no HA Area assigned yet
-- You want finer-grained grouping than your HA Area hierarchy provides
+**1. Create HA person entities** (Settings → People → Add Person):
+- Alice
+- Bob  
+- Dad
 
-```yaml
-# persons.yaml — camera_zones is OPTIONAL when cameras are assigned to HA Areas
-camera_zones:
-  backyard: back_yard    # only needed if camera.backyard has no HA Area
-  patio:    back_yard    # only needed if camera.patio has no HA Area
-```
-
-### Complete `persons.yaml` example
+**2. Configure person profiles via services:**
 
 ```yaml
-persons:
-  Alice:
-    role: child
-    requires_supervision: true
-    dangerous_zones: [near_fence, outside_gate]   # Frigate zones on camera_backyard
-    camera: backyard
-  Bob:
-    role: child
-    requires_supervision: true
-    dangerous_zones: [near_road]                  # Frigate zone on camera_front_door
-    camera: front_door
-  Dad:
-    role: trusted_adult
-    can_supervise: true
-    camera: patio
+# Mark Alice as a child with safe zones
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+  safe_zones:
+    - play_area
 
-# camera_zones is NOT needed if cameras are assigned to HA Areas.
-# Only add this section for cameras without an HA Area assignment.
-# camera_zones:
-#   backyard: back_yard
-#   patio:    back_yard
+# Mark Bob as a child with safe zones
+service: frigate_identity.update_person_profile
+data:
+  person_name: Bob
+  is_child: true
+  safe_zones:
+    - front_yard
 ```
 
-Running the generator with cameras assigned to HA Areas produces:
-- A `binary_sensor.alice_supervised` that uses `area_name()` dynamically
-- A danger-zone automation that alerts when Alice is in `near_fence` or
-  `outside_gate` **and** `binary_sensor.alice_supervised` is `off`
+**3. Assign cameras to HA Areas:**
+- `camera.backyard` → Area: "Back Yard"
+- `camera.patio` → Area: "Back Yard"
+- `camera.front_door` → Area: "Front Entry"
 
-### Blueprint: Supervision Detection
-
-The **Camera Zone Overrides** input defaults to `{}`.  Leave it empty if your
-cameras are already assigned to HA Areas — supervision is fully automatic.
-Only provide entries for cameras that have no HA Area.
+**Result:**
+- `binary_sensor.frigate_identity_alice_supervised` uses `area_name()` to resolve zones
+- Alice is supervised when any adult is in Area "Back Yard" (seen on backyard OR patio)
+- Alerts trigger when Alice is in unsafe Frigate zones AND `supervised` is `off`
 
 ---
 
-## Part 5 – Available Blueprints
+## Part 3 – Available Blueprints
 
-After running with `--copy-blueprints`, five blueprints are available in
-**Settings → Automations & Scenes → Blueprints**:
+The integration includes blueprints for common safety automations. They are automatically
+available in **Settings → Automations & Scenes → Blueprints** after integration setup:
 
 | Blueprint | Best for |
 |---|---|
@@ -513,154 +415,119 @@ After running with `--copy-blueprints`, five blueprints are available in
 | **Notification Action Handlers** | "Adult Present" / "View Camera" notification buttons |
 | **Unknown Person Alert** | Alert on low-confidence / unrecognised detections |
 
-### Creating a Danger Zone Alert (blueprint walkthrough)
+### Creating Automations from Blueprints
+
+**Example: Child Danger Zone Alert**
 
 1. **Settings → Automations & Scenes → Create Automation**
 2. **Start with a blueprint → "Frigate Identity - Child Danger Zone Alert"**
 3. Fill in:
    - **Child Name**: `Alice`
    - **Dangerous Zones**: `["near_fence", "outside_gate"]`
-   - **Supervision Sensor**: `binary_sensor.alice_supervised`
+   - **Supervision Sensor**: `binary_sensor.frigate_identity_alice_supervised`
    - **Notification Service**: `mobile_app_your_phone`
 4. **Save** as "Alice Danger Zone Alert"
 
-Repeat for each child with their own zone list.
+Note the entity ID format: `binary_sensor.frigate_identity_<name>_supervised`
 
-### Creating Supervision Detection (if not using the generator)
+### Supervision Binary Sensors
 
-1. **Create Automation → Start with a blueprint → "Frigate Identity - Supervision Detection"**
-2. Fill in:
-   - **Child Name**: `Alice`
-   - **Trusted Adults**: `["Dad", "Mom"]`
-   - **Camera Zone Mapping**: `{backyard: back_yard, patio: back_yard}`
-   - **Supervision Timeout**: `60`
-   - **Manual Override**: `input_boolean.manual_supervision`
-3. **Save**
+Supervision sensors are **automatically created** by the integration for each child
+when you mark them with `is_child: true` via the service.
+
+No blueprint or manual automation creation is needed. Entity format:
+- `binary_sensor.frigate_identity_alice_supervised`
+- `binary_sensor.frigate_identity_bob_supervised`
 
 ---
 
-## Part 6 – Recommended Setup Sequence
+## Part 4 – Recommended Setup Sequence
 
 ```
-Step 1  ✅  Install integration (HACS or manual)
-Step 2  ✅  Assign Frigate cameras to HA Areas (Settings → Areas & Zones)
-Step 3  ✅  Run generate_dashboard.py with --ha-config-dir + --ha-url + --ha-token + --copy-blueprints + --restart
-Step 4  ✅  Dashboard live at /lovelace/frigate-identity — grouped by HA Area
-Step 5  🔲  Create "Manual Supervision" helper (Settings → Helpers → Toggle)
-Step 6  🔲  Create Notification Action Handlers automation (blueprint)
-Step 7  🔲  Edit danger_zone_automations.yaml — replace notify.notify with your service
-Step 8  🔲  (Optional) Install AppDaemon app for fully automatic updates (see Part 7)
-Step 9  🔲  (Optional) Create Unknown Person Alert for outdoor cameras
-Step 10 🔲  (Optional) Create Vehicle with Children Outside alert
+Step 1  ✅  Install Frigate Identity integration (HACS or manual)
+Step 2  ✅  Configure integration via Settings → Integrations (MQTT prefix, snapshot source)
+Step 3  ✅  Create HA person entities (Settings → People → Add Person)
+Step 4  ✅  Assign Frigate cameras to HA Areas (Settings → Areas & Zones)
+Step 5  ✅  Configure child profiles via frigate_identity.update_person_profile service
+Step 6  ✅  Dashboard auto-generated at /lovelace/frigate-identity
+Step 7  🔲  (Optional) Create "Manual Supervision" helper toggle
+Step 8  🔲  (Optional) Create danger zone alert automations from blueprints
+Step 9  🔲  (Optional) Create unknown person alert automation
+Step 10 🔲  (Optional) Create vehicle + children outside alert automation
 ```
 
 ---
 
-## Part 7 – AppDaemon: Fully Automatic Updates
+## Part 5 – Automatic Updates (Built-In)
 
-Once the initial setup is done, the **AppDaemon app** keeps everything
-up-to-date without any manual intervention:
+The integration **automatically handles all updates** without external tools:
 
 | Trigger | What happens |
 |---|---|
-| HA starts | Full regeneration run |
-| Camera Area changed in HA UI | Dashboard re-grouped automatically (10 s debounce) |
-| `persons.yaml` saved | New persons/zones picked up automatically (30 s poll) |
-| Daily at 03:00 | Full refresh to catch any drift |
+| HA starts | Dashboard generated after 15s delay |
+| New person detected | Entity creation + dashboard refresh (5s debounce) |
+| Camera Area changed | Dashboard re-grouped automatically (5s debounce) |
+| Daily at refresh time | Full dashboard refresh (default: 03:00) |
+| Service call | Immediate regeneration via `frigate_identity.regenerate_dashboard` |
 
-### Prerequisites
+**No AppDaemon, no scripts, no manual file editing required.**
 
-1. **AppDaemon add-on** installed from the Home Assistant Community Add-ons repository:
-   Settings → Add-ons → Add-on Store → search "AppDaemon"
-2. The add-on must be configured with a long-lived access token in
-   `/config/appdaemon/appdaemon.yaml`
+### How It Works
 
-### Installation
+The integration monitors:
+- **MQTT** for new person detections
+- **Area registry** for camera area assignment changes
+- **Person registry** for new HA person entities
 
-**1. Copy the app files into the AppDaemon apps directory:**
+When changes are detected, the dashboard is automatically updated and pushed to storage.
 
-```bash
-cp appdaemon/apps/frigate_identity_dashboard.py /config/appdaemon/apps/
-cp appdaemon/apps/requirements.txt /config/appdaemon/apps/
+### Workflow Examples
+
+**Adding a new person:**
 ```
-
-**2. Configure the app in `/config/appdaemon/apps/apps.yaml`:**
-
-```yaml
-frigate_identity:
-  module: frigate_identity_dashboard
-  class: FrigateIdentityDashboard
-  persons_file: /config/persons.yaml
-  output_dir: /config/frigate_identity
-  ha_config_dir: /config
-  ha_url: http://localhost:8123
-  ha_token: !secret ha_long_lived_token
-  snapshot_source: mqtt
-  copy_blueprints: true
-  auto_restart: false        # set to true for the very first run only
-```
-
-Add your token to `/config/secrets.yaml`:
-```yaml
-ha_long_lived_token: eyJ...your_token_here...
-```
-
-**3. Restart the AppDaemon add-on.**  The app runs immediately and logs to
-the AppDaemon add-on log (visible under Add-ons → AppDaemon → Log).
-
-### Workflow after initial setup
-
-```
-You change a camera's Area in HA UI
-       ↓  (area_registry_updated event fired)
-       ↓  (10 s debounce)
-AppDaemon app calls generate()
+1. Create HA person entity "Carol"
+2. Carol appears in MQTT detection
        ↓
-New dashboard.yaml with updated area grouping
+3. Integration creates entities:
+   - sensor.frigate_identity_carol_location
+   - camera.frigate_identity_carol
        ↓
-Lovelace view pushed to HA automatically
+4. Dashboard automatically refreshed (5s debounce)
        ↓
-Dashboard refreshed — no manual steps
+5. Carol's card appears in dashboard
+   No restart needed!
 ```
 
+**Changing camera area:**
 ```
-You add a new person to persons.yaml
-       ↓  (file mtime changed, detected within 30 s)
-AppDaemon app calls generate()
+1. Move camera.backyard from "Back Yard" to "Side Yard"
        ↓
-New sensors, cameras, automations, and dashboard written
+2. Integration detects area_registry_updated event
        ↓
-HA restart needed (set auto_restart: true or restart manually)
+3. Dashboard regenerated with new area grouping (5s debounce)
        ↓
-New person appears in dashboard
+4. Cards automatically reorganized
 ```
-
-### Tuning options
-
-| Config key | Default | Description |
-|---|---|---|
-| `auto_restart` | `false` | Restart HA after generation. Enable for the first run, disable after. |
-| `debounce_seconds` | `10` | Seconds to wait after last event before regenerating |
-| `file_poll_interval` | `30` | How often (seconds) to check `persons.yaml` for changes |
-| `daily_refresh_time` | `"03:00"` | Daily full-refresh time (HH:MM local) |
 
 ---
 
-## Troubleshooting
+## Part 6 – Troubleshooting
 
 ### Dashboard shows "Entity not found" / grey cards
 
 The entities were not created. Check:
-1. HA was restarted after the generator ran
-2. **Developer Tools → States** — search for `alice_location`
-3. If missing: check that `packages/frigate_identity.yaml` exists and packages
-   are enabled in `configuration.yaml`
+1. Integration is loaded: **Settings → Devices & Services → Frigate Identity**
+2. **Developer Tools → States** — search for `frigate_identity`
+3. Check logs: **Settings → System → Logs** — filter for `frigate_identity`
+4. Verify MQTT messages are being received (see next section)
 
 ### Snapshot card is blank
 
-1. The Identity Service must be running and publishing to `identity/snapshots/{person}`
-2. **Developer Tools → MQTT → Listen** → subscribe to `identity/snapshots/#`
-3. Verify Frigate has `mqtt.crop: true` for each camera
+1. Verify snapshot source: **Settings → Integrations → Frigate Identity → Configure**
+2. For MQTT snapshots: Identity Service must publish to `{prefix}/snapshots/{person}`
+3. **Developer Tools → MQTT → Listen** → subscribe to `identity/snapshots/#`
+4. Verify Frigate has `mqtt.crop: true` for each camera
+5. Check integration logs for snapshot retrieval errors
 
 ### Supervision always shows "off" in a multi-camera yard
 
@@ -671,41 +538,71 @@ The entities were not created. Check:
    {{ area_name('camera.backyard') }}
    {{ area_name('camera.patio') }}
    ```
-   Both should return the same area name.  If either returns empty, assign the
-   camera to an area in HA, or add a `camera_zones` override in `persons.yaml`
-3. If using `camera_zones` overrides, verify the camera names in the mapping
-   match the Frigate camera names exactly (case-sensitive)
-4. Re-run the generator (or wait for AppDaemon to pick up the change) and restart HA
+   Both should return the same area name. If empty, assign cameras to the area.
+3. Verify child is configured: Check person entity attributes have `frigate_identity_is_child: true`
+4. Check binary sensor state: `binary_sensor.frigate_identity_<child>_supervised`
+5. Enable debug logging to see supervision logic:
+   ```yaml
+   logger:
+     logs:
+       custom_components.frigate_identity.binary_sensor: debug
+   ```
 
-### Danger zone alert not firing
+### Safe zone checking not working
 
-1. Check that the `dangerous_zones` names in `persons.yaml` exactly match the
-   **Frigate zone names** defined in `frigate/config.yml` for that camera
-2. In **Developer Tools → MQTT → Listen**, subscribe to `identity/person/#`
-   and walk into the zone — confirm `frigate_zones` in the payload contains
-   the expected zone name
-3. Check the automation trace in HA for which condition failed
+1. Verify safe zones are configured via service call:
+   ```yaml
+   service: frigate_identity.update_child_safe_zones
+   data:
+     child_name: Alice
+     safe_zones: [play_area]
+   ```
+2. Check person entity attributes for `frigate_identity_safe_zones` list
+3. Verify Frigate zone names match exactly (case-sensitive)
+4. In **Developer Tools → MQTT → Listen**, subscribe to `{prefix}/person/#`
+   and verify `frigate_zones` in the payload contains expected zone names
+5. Check supervision binary sensor logic in debug logs
 
-### AppDaemon app not regenerating
+### Dashboard not auto-updating
 
-1. Check the AppDaemon add-on log for errors (Add-ons → AppDaemon → Log)
-2. Verify `generator_script` path points to `generate_dashboard.py`
-   (default: `/config/custom_components/frigate_identity/examples/generate_dashboard.py`)
-3. Verify `ha_token` is set correctly in `secrets.yaml`
-4. Restart the AppDaemon add-on to trigger an immediate regeneration run
+1. Verify `auto_dashboard` is enabled: **Settings → Integrations → Frigate Identity → Configure**
+2. Check integration logs: **Settings → System → Logs** → filter `frigate_identity.dashboard`
+3. Manually trigger regeneration:
+   ```yaml
+   service: frigate_identity.regenerate_dashboard
+   ```
+4. Enable debug logging:
+   ```yaml
+   logger:
+     logs:
+       custom_components.frigate_identity.dashboard: debug
+   ```
+5. Verify Lovelace is in storage mode (not YAML mode)
 
 ### Dashboard push failed (HA YAML Lovelace mode)
 
-If you see "HA may be in YAML Lovelace mode", your Lovelace is configured via
-`lovelace:` in `configuration.yaml`. Switch to storage mode or paste
-`dashboard.yaml` manually via the Raw configuration editor.
+If you see "HA may be in YAML Lovelace mode" in logs:
+1. Your Lovelace is configured via `lovelace:` in `configuration.yaml`
+2. Remove or comment out the `lovelace:` section to use storage mode
+3. Restart Home Assistant
+4. Call `frigate_identity.regenerate_dashboard` service
 
 ### Blueprint not appearing in HA
 
-1. File must be in `/config/blueprints/automation/frigate_identity/`
-   (re-run with `--copy-blueprints` or set `copy_blueprints: true` in AppDaemon config)
-2. No HA restart needed — blueprints are hot-loaded
-3. Check for YAML syntax errors: **Developer Tools → Template** → paste the
-   blueprint YAML to check for errors
+1. Blueprints are bundled with the integration automatically
+2. Check `/config/blueprints/automation/frigate_identity/` directory exists
+3. Verify blueprint YAML files are present
+4. No HA restart needed — blueprints are hot-loaded
+5. If missing, reinstall integration via HACS or manually copy blueprint files
+
+---
+
+## Legacy Documentation Notice
+
+This guide focuses on the **built-in automatic dashboard generation**. The legacy
+`generate_dashboard.py` script and `persons.yaml` workflow are deprecated.
+
+For migration from persons.yaml-based configuration, see [CONFIGURATION_EXAMPLES.md](CONFIGURATION_EXAMPLES.md)
+for service-based person profile management.
 
 

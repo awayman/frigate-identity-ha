@@ -50,20 +50,7 @@ cd frigate_identity_service
 pip install -r requirements.txt
 ```
 
-Edit `.env` with your MQTT broker and Frigate details, then edit `persons.yaml`:
-
-```yaml
-persons:
-  Alice:
-    role: child
-    age: 5
-    requires_supervision: true
-    dangerous_zones: [street, neighbor_yard]
-  
-  Dad:
-    role: trusted_adult
-    can_supervise: true
-```
+Edit `.env` with your MQTT broker and Frigate details.
 
 Start the service:
 
@@ -90,11 +77,83 @@ python identity_service.py
 2. Search for **"Frigate Identity"**
 3. Configure:
    - **MQTT topic prefix**: `identity` (default)
-   - **Path to persons.yaml**: `/config/persons.yaml` (or wherever your file is)
-4. Choose options:
    - **Snapshot source**: `mqtt` (default, recommended)
    - **Auto-generate dashboard**: Yes
-5. **Done!**
+4. **Done!**
+
+---
+
+## Step 5: Configure Children and Safe Zones (HA Services)
+
+Use Developer Tools → Actions to configure each person profile directly in Home Assistant.
+
+Mark Alice as a child with allowed safe zones:
+
+```yaml
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+  safe_zones:
+    - safe_play_area
+    - patio
+```
+
+Mark Dad as an adult:
+
+```yaml
+service: frigate_identity.update_person_profile
+data:
+  person_name: Dad
+  is_child: false
+```
+
+You can update only safe zones later with:
+
+```yaml
+service: frigate_identity.update_child_safe_zones
+data:
+  person_name: Alice
+  safe_zones:
+    - safe_play_area
+```
+
+---
+
+## Step 6: Create Your First Automation
+
+1. **Settings → Automations & Scenes → Create Automation**
+2. **Start with a blueprint**
+3. Select **"Frigate Identity - Child Danger Zone Alert"**
+4. Fill in:
+   - **Child Name**: `Alice`
+   - **Dangerous Zones**: `["street", "neighbor_yard"]`
+   - **Supervision Sensor**: `binary_sensor.frigate_identity_alice_supervised`
+   - **Notification Service**: `mobile_app_your_phone`
+5. **Save**
+
+---
+
+## Step 7: Test
+
+1. Walk in front of a camera with face visible
+2. Check **Developer Tools → States**:
+   - `sensor.frigate_identity_last_person` should update
+   - `sensor.frigate_identity_all_persons` should show your data
+3. Check the auto-generated **Frigate Identity** dashboard view
+4. Walk into a zone marked as dangerous to test safety alerts
+
+---
+
+## Changing Settings
+
+Go to **Settings → Devices & Services → Frigate Identity → Configure** to change:
+- MQTT topic prefix
+- Snapshot source
+- Auto-dashboard generation
+- Dashboard refresh time
+
+To manually refresh the dashboard, call the `frigate_identity.regenerate_dashboard` service.
 
 ---
 
@@ -123,43 +182,6 @@ A **Frigate Identity** view is automatically added to your Lovelace dashboard wi
 - Person snapshot cards grouped by area
 - Location, zones, confidence, and supervision status
 - System status summary
-
----
-
-## Step 5: Create Your First Automation
-
-1. **Settings → Automations & Scenes → Create Automation**
-2. **Start with a blueprint**
-3. Select **"Frigate Identity - Child Danger Zone Alert"**
-4. Fill in:
-   - **Child Name**: `Alice`
-   - **Dangerous Zones**: `["street", "neighbor_yard"]`
-   - **Supervision Sensor**: `binary_sensor.frigate_identity_alice_supervised`
-   - **Notification Service**: `mobile_app_your_phone`
-5. **Save**
-
----
-
-## Step 6: Test
-
-1. Walk in front of a camera with face visible
-2. Check **Developer Tools → States**:
-   - `sensor.frigate_identity_last_person` should update
-   - `sensor.frigate_identity_all_persons` should show your data
-3. Check the auto-generated **Frigate Identity** dashboard view
-4. Walk into a zone marked as dangerous to test safety alerts
-
----
-
-## Changing Settings
-
-Go to **Settings → Devices & Services → Frigate Identity → Configure** to change:
-- MQTT topic prefix
-- persons.yaml path
-- Snapshot source
-- Dashboard auto-generation
-
-To manually refresh the dashboard, call the `frigate_identity.regenerate_dashboard` service.
 
 ---
 

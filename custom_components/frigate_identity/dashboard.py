@@ -19,7 +19,7 @@ from .const import (
     SNAPSHOT_SOURCE_FRIGATE_INTEGRATION,
     SNAPSHOT_SOURCE_MQTT,
 )
-from .person_registry import PersonRegistry, is_child
+from .person_registry import PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,7 +69,9 @@ def _person_card(
         {"type": "attribute", "entity": location_entity, "attribute": "last_seen", "name": "Last Seen"},
     ]
 
-    if is_child(registry.meta.get(person, {})):
+    # Check if child using the registry person data
+    person_obj = registry.get_person(person)
+    if person_obj and person_obj.is_child:
         status_entities.insert(
             1,
             {

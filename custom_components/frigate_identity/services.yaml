@@ -11,3 +11,43 @@ set_debug_mode:
       required: true
       selector:
         boolean:
+
+update_person_profile:
+  name: Update person profile
+  description: Mark a person as child/adult and set safe zones where a child can be unsupervised.
+  fields:
+    person_name:
+      name: Person name
+      description: Name of the person to configure.
+      required: true
+      selector:
+        text:
+    is_child:
+      name: Is child
+      description: Whether this person should be treated as a child for supervision logic.
+      required: false
+      selector:
+        boolean:
+    safe_zones:
+      name: Safe zones
+      description: List of zone names where this child can be alone.
+      required: false
+      selector:
+        object:
+
+update_child_safe_zones:
+  name: Update child safe zones
+  description: Backward-compatible alias for updating safe zones only.
+  fields:
+    person_name:
+      name: Person name
+      description: Name of the child to configure.
+      required: true
+      selector:
+        text:
+    safe_zones:
+      name: Safe zones
+      description: List of zone names where this child can be alone.
+      required: false
+      selector:
+        object:

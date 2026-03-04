@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .person_registry import PersonData, PersonRegistry, is_adult
+from .person_registry import PersonData, PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,17 +109,42 @@ class FrigateIdentitySupervisionSensor(BinarySensorEntity):
 
     @callback
     def _evaluate_supervision(self) -> None:
-        """Evaluate whether the child is currently supervised."""
+        """Evaluate whether the child is currently supervised.
+        
+        Child is supervised if:
+          1. Child is in a declared safe zone (can be alone), OR
+          2. An adult is in the same zone within timeout window
+        """
         child = self._registry.get_person(self._child_name)
         if child is None or child.camera is None:
             self._attr_is_on = False
-            self._attr_extra_state_attributes = {"supervising_adult": None}
+            self._attr_extra_state_attributes = {
+                "supervising_adult": None,
+                "safe_zone": None,
+            }
             self.async_write_ha_state()
             return
 
         child_zone = self._resolve_zone(child.camera)
         now_ts = datetime.now().timestamp()
         supervising: str | None = None
+
+        # Check if child is in a safe zone
+        actual_zone = child.frigate_zones[0] if child.frigate_zones else None
+        is_in_safe_zone = self._registry.is_child_in_safe_zone(
+            self._child_name, actual_zone
+        ) if actual_zone else False
+        
+        if is_in_safe_zone:
+            # Child is in a safe zone; doesn't need direct supervision
+            self._attr_is_on = True
+            self._attr_extra_state_attributes = {
+                "supervising_adult": None,
+                "safe_zone": actual_zone,
+                "reason": "in_safe_zone",
+            }
+            self.async_write_ha_state()
+            return
 
         # Refresh adult list from registry (adults may have been added)
         current_adults = self._registry.adults()
@@ -146,6 +171,8 @@ class FrigateIdentitySupervisionSensor(BinarySensorEntity):
         self._attr_extra_state_attributes = {
             "supervising_adult": supervising,
             "child_zone": child_zone,
+            "safe_zone": None,
+            "reason": "adult_present" if supervising else "unsupervised",
         }
         self.async_write_ha_state()
 

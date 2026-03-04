@@ -20,10 +20,10 @@ A Home Assistant custom component that integrates with the [Frigate Identity Ser
 
 📘 **Full walkthrough**: [QUICK_START.md](QUICK_START.md)
 
-1. **Install Frigate Identity Service** and configure `persons.yaml`
+1. **Install Frigate Identity Service** and verify it is publishing person events to MQTT
 2. **Install via HACS**: Add `https://github.com/awayman/frigate-identity-ha` as a custom repository
 3. **Restart Home Assistant**
-4. **Settings → Integrations → Add → Frigate Identity** — configure MQTT prefix and persons.yaml path
+4. **Settings → Integrations → Add → Frigate Identity** — configure MQTT prefix and snapshot/dashboard options
 5. **Done!** — sensors, cameras, dashboard, and blueprints are all created automatically
 
 ## What Gets Created
@@ -39,7 +39,7 @@ After adding the integration, the following entities are automatically created:
 | `binary_sensor.frigate_identity_<name>_supervised` | Per-child: is a trusted adult nearby? |
 | `switch.frigate_identity_manual_supervision` | Manual supervision override for notification handlers |
 
-Persons are discovered from `persons.yaml` on startup and from MQTT messages at runtime.
+Persons are discovered from Home Assistant `person.*` entities on startup and from MQTT messages at runtime.
 New persons detected via MQTT get entities created dynamically.
 
 ## Blueprints
@@ -79,42 +79,46 @@ All settings are configured via the UI:
 | Setting | Default | Description |
 |---|---|---|
 | MQTT topic prefix | `identity` | Prefix for MQTT topics (e.g., `identity/person/#`) |
-| persons.yaml path | `/config/persons.yaml` | Path to Frigate Identity Service persons file |
 | Snapshot source | `mqtt` | `mqtt`, `frigate_api`, or `frigate_integration` |
 | Auto-generate dashboard | `true` | Automatically create/update Lovelace view |
 | Dashboard refresh time | `03:00` | Daily dashboard refresh time (HH:MM) |
 
 Change settings any time via **Settings → Integrations → Frigate Identity → Configure**.
 
-### persons.yaml Format
+### Person Profile Services
 
-The integration reads person metadata from the Frigate Identity Service's `persons.yaml`:
+Use Home Assistant services to mark children and define safe zones directly from HA.
+
+#### `frigate_identity.update_person_profile`
+
+Fields:
+- `person_name` (required): Person display name
+- `is_child` (optional): `true` for child, `false` for adult
+- `safe_zones` (optional): list of Frigate zone names where the child can be unsupervised
+
+Example service call:
 
 ```yaml
-persons:
-  Alice:
-    role: child
-    age: 5
-    requires_supervision: true
-    dangerous_zones: [street, neighbor_yard]
-    camera: backyard
-  Dad:
-    role: trusted_adult
-    can_supervise: true
-    camera: driveway
-
-# Optional: override camera→zone mapping for supervision
-camera_zones:
-  backyard: back_yard
-  patio: back_yard
+service: frigate_identity.update_person_profile
+data:
+  person_name: Alice
+  is_child: true
+  safe_zones:
+    - safe_play_area
+    - patio
 ```
 
-| Field | Effect |
-|---|---|
-| `role: child` / `requires_supervision: true` | Supervision binary sensor created; dashboard card shows Supervised row |
-| `role: trusted_adult` / `can_supervise: true` | Listed as supervisor in children's supervision sensors |
-| `dangerous_zones` | Used by Child Danger Zone Alert blueprint |
-| `camera` | Used for `frigate_integration` snapshot mode |
+#### `frigate_identity.update_child_safe_zones`
+
+Backward-compatible alias for updating safe zones only.
+
+```yaml
+service: frigate_identity.update_child_safe_zones
+data:
+  person_name: Alice
+  safe_zones:
+    - safe_play_area
+```
 
 ## Snapshot Sources
 
