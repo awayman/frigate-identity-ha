@@ -229,36 +229,47 @@ async def async_generate_dashboard(
 
     Returns True on success, False on failure.
     """
+    _LOGGER.info("=== DASHBOARD GENERATION STARTED ===")
     persons = registry.person_names
+    _LOGGER.info("Persons in registry: %d - %s", len(persons), persons)
+    
     if not persons:
-        _LOGGER.debug("No persons registered; skipping dashboard generation")
+        _LOGGER.warning("No persons registered; skipping dashboard generation")
+        _LOGGER.warning("Dashboard cannot be created without persons!")
         return False
 
     snapshot_source = config.get(CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE)
+    _LOGGER.info("Snapshot source: %s", snapshot_source)
 
     # Merge camera_zones overrides with HA area assignments
     ha_areas = await _fetch_area_map(hass)
     area_map = {**ha_areas, **registry.camera_zones}
+    _LOGGER.info("Area map loaded: %d areas", len(area_map) if area_map else 0)
 
     view = _build_view(persons, snapshot_source, registry, area_map or None)
+    _LOGGER.info("Dashboard view built with %d cards", len(view.get("cards", [])))
 
     # Push to Lovelace storage
-    _LOGGER.debug(
+    _LOGGER.info(
         "Attempting to push dashboard: lovelace_available=%s, "
         "persons=%d, snapshot_source=%s",
         "lovelace" in hass.data,
         len(persons),
         snapshot_source,
     )
+    _LOGGER.info("Available hass.data keys: %s", list(hass.data.keys()))
     try:
         # Try accessing lovelace_dashboards (modern HA approach)
         dashboards = hass.data.get("lovelace_dashboards", {})
+        _LOGGER.info("Found %d lovelace_dashboards in hass.data", len(dashboards))
         
         if not dashboards:
-            _LOGGER.debug(
+            _LOGGER.warning(
                 "No lovelace_dashboards found in hass.data; "
                 "this may indicate Lovelace is in YAML mode or not initialized yet."
             )
+            _LOGGER.warning("Dashboard view was built but cannot be pushed to Lovelace!")
+            return False
             return False
         
         # Try to find the main dashboard (usually key is None or "lovelace")

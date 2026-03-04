@@ -69,6 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Dashboard auto-generation ───────────────────────────────────────
     auto_dashboard = config.get(CONF_AUTO_DASHBOARD, DEFAULT_AUTO_DASHBOARD)
+    _LOGGER.info("Auto-dashboard enabled: %s", auto_dashboard)
 
     if auto_dashboard:
         # Debounced regeneration on person changes
@@ -127,6 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Initial generation (after a short delay so entities are loaded)
         @callback
         def _initial_regen(_now: Any = None) -> None:
+            _LOGGER.info("Triggering initial dashboard generation (15s delayed)")
             hass.async_create_task(
                 async_generate_dashboard(hass, registry, config)
             )

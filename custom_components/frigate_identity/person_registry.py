@@ -196,27 +196,33 @@ class PersonRegistry:
 
     async def async_load_persons_from_ha(self) -> None:
         """Load person metadata from HA person entity registry."""
+        _LOGGER.info("=== LOADING PERSONS FROM HA ===")
         registry = er.async_get(self.hass)
         
         # Look for person entities and load custom attributes
         new_persons = False
+        person_count = 0
         for ent_id, entry in registry.entities.items():
             if entry.domain != "person":
                 continue
             
+            person_count += 1
             person_name = entry.name or entry.original_name
             if not person_name:
+                _LOGGER.warning("Person entity %s has no name, skipping", ent_id)
                 continue
                 
             # Get the person entity state
             entity_state = self.hass.states.get(ent_id)
             if not entity_state:
+                _LOGGER.warning("Person entity %s has no state, skipping", ent_id)
                 continue
             
             # Create or get person data
             if person_name not in self._persons:
                 self._persons[person_name] = PersonData(person_name)
                 new_persons = True
+                _LOGGER.info("Loaded person from HA: %s", person_name)
             
             person = self._persons[person_name]
             
@@ -232,9 +238,11 @@ class PersonRegistry:
             await self._async_notify_listeners()
         
         _LOGGER.info(
-            "Loaded %d person(s) from HA person entities",
+            "Loaded %d person(s) from %d HA person entities",
             len(self._persons),
+            person_count,
         )
+        _LOGGER.info("=== PERSON LOAD COMPLETE ===")
 
     @callback
     def async_update_person(self, name: str, payload: dict[str, Any]) -> None:
