@@ -251,92 +251,73 @@ async def async_generate_dashboard(
         snapshot_source,
     )
     try:
-        lovelace = hass.data.get("lovelace")
-        if lovelace is None:
-            _LOGGER.warning(
-                "Lovelace data not available; cannot push dashboard. "
-                "This may happen if HA uses YAML-mode dashboards. "
-                "Trying websocket fallback approach."
-            )
-            return await _push_via_ws(hass, view)
-
-        # Get the config object from the lovelace integration
-        config_obj = lovelace.get("config")
-        if config_obj is None:
-            _LOGGER.debug("No lovelace config object found; trying websocket approach")
-            return await _push_via_ws(hass, view)
-
-        _LOGGER.debug("Lovelace config object found; loading current config")
-        current = await config_obj.async_load(False)
-        views: list[dict[str, Any]] = list(current.get("views", []))
-        _LOGGER.debug("Current dashboard has %d view(s)", len(views))
-        views = [v for v in views if v.get("path") != "frigate-identity"]
-        views.append(view)
-        current["views"] = views
-        await config_obj.async_save(current)
-        _LOGGER.info("Frigate Identity dashboard view updated successfully")
-        return True
-
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception(
-            "Failed to push via lovelace storage; attempting websocket approach"
-        )
-        return await _push_via_ws(hass, view)
-
-
-async def _push_via_ws(
-    hass: HomeAssistant, view: dict[str, Any]
-) -> bool:
-    """Push dashboard view using the websocket-style lovelace API."""
-    try:
-        from homeassistant.components.lovelace import dashboard as ll_dashboard
-
+        # Try accessing lovelace_dashboards (modern HA approach)
         dashboards = hass.data.get("lovelace_dashboards", {})
-        _LOGGER.debug(
-            "Websocket fallback: found %d lovelace dashboard(s)",
-            len(dashboards),
-        )
         
         if not dashboards:
-            _LOGGER.warning(
-                "No lovelace_dashboards found. This may indicate Lovelace "
-                "is disabled or not fully initialized."
+            _LOGGER.debug(
+                "No lovelace_dashboards found in hass.data; "
+                "this may indicate Lovelace is in YAML mode or not initialized yet."
             )
             return False
         
+        # Try to find the main dashboard (usually key is None or "lovelace")
+        for dash_key in [None, "lovelace"]:
+            if dash_key in dashboards:
+                dashboard_obj = dashboards[dash_key]
+                _LOGGER.debug(
+                    "Found dashboard with key '%s' (type=%s)",
+                    dash_key,
+                    type(dashboard_obj).__name__,
+                )
+                
+                if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
+                    config_obj = dashboard_obj.config
+                    if hasattr(config_obj, "async_load"):
+                        _LOGGER.debug("Loading current dashboard config")
+                        current = await config_obj.async_load(False)
+                        
+                        if isinstance(current, dict):
+                            views: list[dict[str, Any]] = list(current.get("views", []))
+                            _LOGGER.debug("Current dashboard has %d view(s)", len(views))
+                            views = [v for v in views if v.get("path") != "frigate-identity"]
+                            views.append(view)
+                            current["views"] = views
+                            await config_obj.async_save(current)
+                            _LOGGER.info("Frigate Identity dashboard view updated successfully")
+                            return True
+        
+        # If we didn't find the main dashboard, try all dashboards
         for dash_name, dashboard_obj in dashboards.items():
             _LOGGER.debug(
-                "Checking dashboard '%s' (type=%s, has_config=%s)",
+                "Trying dashboard '%s' (type=%s)",
                 dash_name,
                 type(dashboard_obj).__name__,
-                hasattr(dashboard_obj, "config"),
             )
             if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
-                config = dashboard_obj.config
-                if hasattr(config, "async_load"):
-                    current = await config.async_load(False)
+                config_obj = dashboard_obj.config
+                if hasattr(config_obj, "async_load"):
+                    current = await config_obj.async_load(False)
                     if isinstance(current, dict):
                         views = list(current.get("views", []))
-                        views = [
-                            v for v in views if v.get("path") != "frigate-identity"
-                        ]
+                        views = [v for v in views if v.get("path") != "frigate-identity"]
                         views.append(view)
                         current["views"] = views
-                        await config.async_save(current)
+                        await config_obj.async_save(current)
                         _LOGGER.info(
-                            "Dashboard view pushed to dashboard '%s' via lovelace_dashboards",
+                            "Frigate Identity dashboard view updated in dashboard '%s'",
                             dash_name,
                         )
                         return True
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception(
-            "Failed to push Frigate Identity dashboard via websocket approach. "
-            "You may need to paste the view YAML manually."
+        
+        _LOGGER.warning(
+            "Could not find a suitable lovelace dashboard to update. "
+            "Lovelace may be in YAML mode or not properly initialized."
         )
         return False
-    
-    _LOGGER.warning(
-        "Could not find a suitable dashboard to push to. "
-        "Lovelace may not be properly configured or enabled."
-    )
-    return False
+
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception(
+            "Failed to push Frigate Identity dashboard view"
+        )
+        return False
