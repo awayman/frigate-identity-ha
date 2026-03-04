@@ -312,13 +312,18 @@ async def async_generate_dashboard(
                                                 _LOGGER.info("✅ Dashboard updated via LovelaceStorage.async_load/save (HA 2026)!")
                                                 return True
                                     except Exception as e:
-                                        _LOGGER.warning("Failed to update dashboard with key '%s': %s", dash_key, e)
+                                        _LOGGER.info("Could not update main dashboard: %s", e)
+                                        continue  # Try next dashboard
                                 else:
                                     _LOGGER.info("    ✗ No async_load method")
                         
-                        # If no dashboard found, try all dashboards
-                        _LOGGER.info("  Trying all dashboards in lovelace.dashboards...")
+                        # If main dashboard not updated, try all dashboards
+                        _LOGGER.info("  Main dashboard not available, trying all dashboards...")
                         for dash_name, dashboard in dashboards_obj.items():
+                            # Skip if already tried as main dashboard
+                            if dash_name in [None, "lovelace"]:
+                                continue
+                                
                             _LOGGER.info("    Trying dashboard '%s' (type: %s)", dash_name, type(dashboard).__name__)
                             if hasattr(dashboard, "async_load"):
                                 try:
@@ -332,7 +337,7 @@ async def async_generate_dashboard(
                                         _LOGGER.info("✅ Dashboard updated in '%s' (HA 2026)!", dash_name)
                                         return True
                                 except Exception as e:
-                                    _LOGGER.warning("Failed to update dashboard '%s': %s", dash_name, e)
+                                    _LOGGER.info("Failed to update dashboard '%s': %s", dash_name, e)
                             else:
                                 _LOGGER.info("      ✗ Dashboard '%s' has no async_load method", dash_name)
                     
