@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-03-04
+
+### Changed
+- Refactor dashboard creation to delete and recreate 'frigate-identity' dashboard for a clean state
+
 ## [0.5.15] - 2026-03-04
 
 ### Changed
