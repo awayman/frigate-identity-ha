@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-04
+
+### Changed
+- Add get_registry_status service to log current person registry status
+
 ## [0.5.2] - 2026-03-04
 
 ### Changed
