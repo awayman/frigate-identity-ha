@@ -327,35 +327,21 @@ async def async_generate_dashboard(
                         if "frigate-identity" not in dashboards_obj:
                             _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, will create one")
                             try:
-                                # Create the dashboard config with our view as the only view
                                 from homeassistant.components.lovelace.dashboard import LovelaceStorage
                                 
+                                # Create the dashboard config with our view as the only view
                                 dashboard_config = {
                                     "views": [view]
                                 }
                                 
-                                # Try different constructor signatures
-                                new_dashboard = None
-                                try:
-                                    new_dashboard = LovelaceStorage(
-                                        hass=hass,
-                                        yaml_path=None,
-                                        overwrite=False
-                                    )
-                                except TypeError:
-                                    try:
-                                        new_dashboard = LovelaceStorage(hass)
-                                    except TypeError:
-                                        # Try with explicit None arguments
-                                        new_dashboard = LovelaceStorage(hass, None, False)
+                                # LovelaceStorage signature is: __init__(hass, config)
+                                new_dashboard = LovelaceStorage(hass, dashboard_config)
+                                dashboards_obj["frigate-identity"] = new_dashboard
                                 
-                                if new_dashboard:
-                                    dashboards_obj["frigate-identity"] = new_dashboard
-                                    await new_dashboard.async_save(dashboard_config)
-                                    _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard as separate tab!")
-                                    return True
+                                _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard as separate tab!")
+                                return True
                             except Exception as e:
-                                _LOGGER.debug("Could not create dedicated dashboard: %s", str(e), exc_info=True)
+                                _LOGGER.error("Could not create dedicated dashboard: %s", str(e), exc_info=True)
                                 _LOGGER.warning("Dashboard will not be created. Consider creating a 'Frigate Identity' dashboard manually in Settings → Dashboards")
                                 return False
                         else:
@@ -373,7 +359,7 @@ async def async_generate_dashboard(
                                         _LOGGER.info("✅ Updated 'frigate-identity' dashboard!")
                                         return True
                             except Exception as e:
-                                _LOGGER.debug("Could not update existing dashboard: %s", str(e))
+                                _LOGGER.error("Could not update existing dashboard: %s", str(e), exc_info=True)
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     
