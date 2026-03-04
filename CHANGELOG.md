@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-03-04
+
+### Changed
+- Enhance logging for dashboard generation process in Home Assistant 2026
+
 ## [0.5.7] - 2026-03-04
 
 ### Changed
