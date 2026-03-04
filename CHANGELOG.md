@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-03-04
+
+### Changed
+- Refactor logging level from info to debug for dashboard and person loading processes
+
 ## [0.5.10] - 2026-03-04
 
 ### Changed
