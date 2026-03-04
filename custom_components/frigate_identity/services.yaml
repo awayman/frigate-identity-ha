@@ -1,6 +1,9 @@
 regenerate_dashboard:
   name: Regenerate dashboard
   description: Regenerate the Frigate Identity dashboard and related Lovelace resources.
+get_registry_status:
+  name: Get registry status
+  description: Log the current person registry status to help diagnose dashboard issues.
 set_debug_mode:
   name: Set debug mode
   description: Enable or disable debug logging in the Frigate Identity Service for troubleshooting misidentifications.

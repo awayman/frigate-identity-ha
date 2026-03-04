@@ -141,6 +141,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "regenerate_dashboard", _handle_regen_service)
 
+    # ── Service: get_registry_status ────────────────────────────────────
+    async def _handle_get_registry_status(call: ServiceCall) -> None:
+        """Log the current person registry status for debugging."""
+        persons = registry.person_names
+        _LOGGER.info("=== Frigate Identity Registry Status ===")
+        _LOGGER.info("Total persons registered: %d", len(persons))
+        if persons:
+            _LOGGER.info("Persons: %s", ", ".join(persons))
+            for name in persons:
+                person = registry.get_person(name)
+                if person:
+                    _LOGGER.info(
+                        "  - %s: camera=%s, is_child=%s, safe_zones=%s",
+                        name, person.camera, person.is_child, person.safe_zones
+                    )
+        else:
+            _LOGGER.warning("No persons registered! Dashboard cannot be generated.")
+            _LOGGER.warning("Add persons to Home Assistant (Settings → People) or wait for MQTT discovery.")
+        _LOGGER.info("Auto-dashboard enabled: %s", auto_dashboard)
+        _LOGGER.info("========================================")
+
+    hass.services.async_register(DOMAIN, "get_registry_status", _handle_get_registry_status)
+
     # ── Service: set_debug_mode ─────────────────────────────────────────
     async def _handle_set_debug_mode(call: ServiceCall) -> None:
         """Set debug mode for the frigate identity service."""
@@ -266,6 +289,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop("registry", None)
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
+        hass.services.async_remove(DOMAIN, "get_registry_status")
         hass.services.async_remove(DOMAIN, "set_debug_mode")
         hass.services.async_remove(DOMAIN, "update_person_profile")
         hass.services.async_remove(DOMAIN, "update_child_safe_zones")
