@@ -278,51 +278,58 @@ async def async_generate_dashboard(
             if lovelace_storage:
                 _LOGGER.info("Found 'lovelace' in hass.data, attempting alternative method")
                 _LOGGER.info("Lovelace object type: %s", type(lovelace_storage).__name__)
-                _LOGGER.info("Lovelace object attributes: %s", [attr for attr in dir(lovelace_storage) if not attr.startswith('_')])
                 
                 try:
-                    # HA 2026 may use different API - try multiple approaches
+                    # Log available methods
+                    available_attrs = [attr for attr in dir(lovelace_storage) if not attr.startswith('_')]
+                    _LOGGER.info("Lovelace object has these attributes: %s", available_attrs)
                     
-                    # Approach 1: Try async_get_info (HA 2024+)
-                    if hasattr(lovelace_storage, "async_get_info"):
-                        _LOGGER.info("Trying async_get_info method")
-                        info = await lovelace_storage.async_get_info()
-                        _LOGGER.info("Lovelace info: %s", info)
-                    
-                    # Approach 2: Direct config access
-                    if hasattr(lovelace_storage, "config"):
-                        _LOGGER.info("Found config attribute on lovelace object")
-                        config_obj = lovelace_storage.config
-                        if hasattr(config_obj, "async_load"):
-                            _LOGGER.info("Loading dashboard via lovelace.config.async_load()")
-                            current = await config_obj.async_load(False)
-                            if isinstance(current, dict):
-                                views = list(current.get("views", []))
-                                views = [v for v in views if v.get("path") != "frigate-identity"]
-                                views.append(view)
-                                current["views"] = views
-                                await config_obj.async_save(current)
-                                _LOGGER.info("✅ Dashboard updated via lovelace.config!")
-                                return True
-                    
-                    # Approach 3: Try async_load directly
-                    if hasattr(lovelace_storage, "async_load"):
-                        _LOGGER.info("Trying direct async_load on lovelace object")
-                        current = await lovelace_storage.async_load(False)
-                        if isinstance(current, dict):
-                            views = list(current.get("views", []))
-                            views = [v for v in views if v.get("path") != "frigate-identity"]
-                            views.append(view)
-                            current["views"] = views
-                            if hasattr(lovelace_storage, "async_save"):
-                                await lovelace_storage.async_save(current)
-                                _LOGGER.info("✅ Dashboard updated via direct lovelace methods!")
-                                return True
+                    # HA 2026: lovelace.dashboards replaces lovelace_dashboards
+                    if hasattr(lovelace_storage, "dashboards"):
+                        _LOGGER.info("✓ Has dashboards attribute (HA 2026 API)")
+                        dashboards_obj = lovelace_storage.dashboards
+                        _LOGGER.info("  dashboards type: %s", type(dashboards_obj).__name__)
+                        
+                        # Try to find the default dashboard
+                        for dash_key in [None, "lovelace"]:
+                            if dash_key in dashboards_obj:
+                                dashboard = dashboards_obj[dash_key]
+                                _LOGGER.info("  Found dashboard with key '%s'", dash_key)
+                                
+                                if hasattr(dashboard, "config"):
+                                    config_obj = dashboard.config
+                                    if hasattr(config_obj, "async_load"):
+                                        current = await config_obj.async_load(False)
+                                        if isinstance(current, dict):
+                                            views = list(current.get("views", []))
+                                            views = [v for v in views if v.get("path") != "frigate-identity"]
+                                            views.append(view)
+                                            current["views"] = views
+                                            await config_obj.async_save(current)
+                                            _LOGGER.info("✅ Dashboard updated via lovelace.dashboards (HA 2026)!")
+                                            return True
+                        
+                        # If no dashboard found, try all dashboards
+                        _LOGGER.info("  Trying all dashboards in lovelace.dashboards...")
+                        for dash_name, dashboard in dashboards_obj.items():
+                            _LOGGER.info("    Trying dashboard '%s'", dash_name)
+                            if hasattr(dashboard, "config"):
+                                config_obj = dashboard.config
+                                if hasattr(config_obj, "async_load"):
+                                    current = await config_obj.async_load(False)
+                                    if isinstance(current, dict):
+                                        views = list(current.get("views", []))
+                                        views = [v for v in views if v.get("path") != "frigate-identity"]
+                                        views.append(view)
+                                        current["views"] = views
+                                        await config_obj.async_save(current)
+                                        _LOGGER.info("✅ Dashboard updated in '%s' (HA 2026)!", dash_name)
+                                        return True
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     
-                except Exception as e:
-                    _LOGGER.exception("Alternative lovelace access failed: %s", e)
+                except Exception:
+                    _LOGGER.exception("Exception while trying alternative lovelace access")
             else:
                 _LOGGER.warning("'lovelace' key not found in hass.data")
             
