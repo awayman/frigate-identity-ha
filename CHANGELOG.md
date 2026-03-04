@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-03-04
+
+### Changed
+- Update dashboard handling for Home Assistant 2026 compatibility
+
 ## [0.5.8] - 2026-03-04
 
 ### Changed
