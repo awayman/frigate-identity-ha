@@ -17,5 +17,5 @@
   "requirements": [
     "pyyaml>=6.0"
   ],
-  "version": "0.5.17"
+  "version": "0.5.18"
 }

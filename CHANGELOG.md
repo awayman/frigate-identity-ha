@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-03-04
+
+### Changed
+- Handle missing dashboard config by initializing with an empty structure
+
 ## [0.5.17] - 2026-03-04
 
 ### Changed
