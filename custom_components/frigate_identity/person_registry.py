@@ -196,7 +196,7 @@ class PersonRegistry:
 
     async def async_load_persons_from_ha(self) -> None:
         """Load person metadata from HA person entity registry."""
-        _LOGGER.info("=== LOADING PERSONS FROM HA ===")
+        _LOGGER.debug("=== LOADING PERSONS FROM HA ===")
         registry = er.async_get(self.hass)
         
         # Look for person entities and load custom attributes
@@ -222,7 +222,7 @@ class PersonRegistry:
             if person_name not in self._persons:
                 self._persons[person_name] = PersonData(person_name)
                 new_persons = True
-                _LOGGER.info("Loaded person from HA: %s", person_name)
+                _LOGGER.debug("Loaded person from HA: %s", person_name)
             
             person = self._persons[person_name]
             
@@ -237,12 +237,12 @@ class PersonRegistry:
         if new_persons:
             await self._async_notify_listeners()
         
-        _LOGGER.info(
+        _LOGGER.debug(
             "Loaded %d person(s) from %d HA person entities",
             len(self._persons),
             person_count,
         )
-        _LOGGER.info("=== PERSON LOAD COMPLETE ===")
+        _LOGGER.debug("=== PERSON LOAD COMPLETE ===")
 
     @callback
     def async_update_person(self, name: str, payload: dict[str, Any]) -> None:

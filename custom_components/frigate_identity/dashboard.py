@@ -229,9 +229,9 @@ async def async_generate_dashboard(
 
     Returns True on success, False on failure.
     """
-    _LOGGER.info("=== DASHBOARD GENERATION STARTED ===")
+    _LOGGER.debug("=== DASHBOARD GENERATION STARTED ===")
     persons = registry.person_names
-    _LOGGER.info("Persons in registry: %d - %s", len(persons), persons)
+    _LOGGER.debug("Persons in registry: %d - %s", len(persons), persons)
     
     if not persons:
         _LOGGER.warning("No persons registered; skipping dashboard generation")
@@ -239,31 +239,31 @@ async def async_generate_dashboard(
         return False
 
     snapshot_source = config.get(CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE)
-    _LOGGER.info("Snapshot source: %s", snapshot_source)
+    _LOGGER.debug("Snapshot source: %s", snapshot_source)
 
     # Merge camera_zones overrides with HA area assignments
     ha_areas = await _fetch_area_map(hass)
     area_map = {**ha_areas, **registry.camera_zones}
-    _LOGGER.info("Area map loaded: %d areas", len(area_map) if area_map else 0)
+    _LOGGER.debug("Area map loaded: %d areas", len(area_map) if area_map else 0)
 
     view = _build_view(persons, snapshot_source, registry, area_map or None)
-    _LOGGER.info("Dashboard view built with %d cards", len(view.get("cards", [])))
+    _LOGGER.debug("Dashboard view built with %d cards", len(view.get("cards", [])))
 
     # Push to Lovelace storage
-    _LOGGER.info(
+    _LOGGER.debug(
         "Attempting to push dashboard: lovelace_available=%s, "
         "persons=%d, snapshot_source=%s",
         "lovelace" in hass.data,
         len(persons),
         snapshot_source,
     )
-    _LOGGER.info("Available hass.data keys: %s", list(hass.data.keys()))
+    _LOGGER.debug("Available hass.data keys: %s", list(hass.data.keys()))
     try:
         # Try accessing lovelace_dashboards (modern HA approach)
         dashboards = hass.data.get("lovelace_dashboards", {})
-        _LOGGER.info("Found %d lovelace_dashboards in hass.data", len(dashboards))
+        _LOGGER.debug("Found %d lovelace_dashboards in hass.data", len(dashboards))
         if dashboards:
-            _LOGGER.info("Dashboard keys: %s", list(dashboards.keys()))
+            _LOGGER.debug("Dashboard keys: %s", list(dashboards.keys()))
         
         if not dashboards:
             _LOGGER.warning(
@@ -271,37 +271,38 @@ async def async_generate_dashboard(
                 "this may indicate Lovelace is in YAML mode or not initialized yet."
             )
             _LOGGER.warning("Dashboard view was built but cannot be pushed to Lovelace!")
-            _LOGGER.warning("Trying alternative lovelace access method...")
+            _LOGGER.debug("Trying alternative lovelace access method...")
             
             # Try alternative access method for HA 2026+
             lovelace_storage = hass.data.get("lovelace")
             if lovelace_storage:
-                _LOGGER.info("Found 'lovelace' in hass.data, attempting alternative method")
-                _LOGGER.info("Lovelace object type: %s", type(lovelace_storage).__name__)
+                _LOGGER.debug("Found 'lovelace' in hass.data, attempting alternative method")
+                _LOGGER.debug("Lovelace object type: %s", type(lovelace_storage).__name__)
                 
                 try:
                     # Log available methods
                     available_attrs = [attr for attr in dir(lovelace_storage) if not attr.startswith('_')]
-                    _LOGGER.info("Lovelace object has these attributes: %s", available_attrs)
+                    _LOGGER.debug("Lovelace object has these attributes: %s", available_attrs)
                     
                     # HA 2026: lovelace.dashboards replaces lovelace_dashboards
                     if hasattr(lovelace_storage, "dashboards"):
-                        _LOGGER.info("✓ Has dashboards attribute (HA 2026 API)")
+                        _LOGGER.debug("✓ Has dashboards attribute (HA 2026 API)")
                         dashboards_obj = lovelace_storage.dashboards
-                        _LOGGER.info("  dashboards type: %s", type(dashboards_obj).__name__)
+                        _LOGGER.debug("  dashboards type: %s", type(dashboards_obj).__name__)
                         
                         # Try to find the default dashboard
                         for dash_key in [None, "lovelace"]:
                             if dash_key in dashboards_obj:
                                 dashboard = dashboards_obj[dash_key]
-                                _LOGGER.info("  Found dashboard with key '%s'", dash_key)
-                                _LOGGER.info("    Dashboard type: %s", type(dashboard).__name__)
+                                _LOGGER.debug("  Found dashboard with key '%s'", dash_key)
+                                _LOGGER.debug("    Dashboard type: %s", type(dashboard).__name__)
                                 
                                 # HA 2026: LovelaceStorage has async_load/async_save directly
                                 if hasattr(dashboard, "async_load"):
-                                    _LOGGER.info("    ✓ Has async_load directly on dashboard object")
+                                    _LOGGER.debug("    ✓ Has async_load directly on dashboard object")
                                     try:
                                         current = await dashboard.async_load(False)
+                                        _LOGGER.debug("    async_load returned: type=%s, value=%s", type(current).__name__, current if not isinstance(current, dict) else "dict")
                                         if isinstance(current, dict):
                                             views = list(current.get("views", []))
                                             views = [v for v in views if v.get("path") != "frigate-identity"]
@@ -311,35 +312,46 @@ async def async_generate_dashboard(
                                                 await dashboard.async_save(current)
                                                 _LOGGER.info("✅ Dashboard updated via LovelaceStorage.async_load/save (HA 2026)!")
                                                 return True
+                                        else:
+                                            _LOGGER.info("    async_load returned non-dict: %s", type(current).__name__)
                                     except Exception as e:
-                                        _LOGGER.info("Could not update main dashboard: %s", e)
+                                        _LOGGER.debug("Exception updating dashboard '%s': %s", dash_key, str(e))
                                         continue  # Try next dashboard
                                 else:
-                                    _LOGGER.info("    ✗ No async_load method")
+                                    _LOGGER.debug("    ✗ No async_load method")
                         
                         # If main dashboard not updated, try all dashboards
-                        _LOGGER.info("  Main dashboard not available, trying all dashboards...")
-                        for dash_name, dashboard in dashboards_obj.items():
-                            # Skip if already tried as main dashboard
-                            if dash_name in [None, "lovelace"]:
+                        _LOGGER.debug("  Main dashboard not available, trying all dashboards...")
+                        
+                        # Try to use dedicated "frigate-identity" dashboard if it exists, or create one
+                        if "frigate-identity" not in dashboards_obj:
+                            _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, trying others...")
+                        
+                        # Try dashboards in priority order: frigate-identity > map > others
+                        preferred_order = ["frigate-identity", "map"] + [k for k in dashboards_obj.keys() 
+                                                                          if k not in [None, "lovelace", "frigate-identity", "map"]]
+                        
+                        for dash_name in preferred_order:
+                            if dash_name not in dashboards_obj:
                                 continue
-                                
-                            _LOGGER.info("    Trying dashboard '%s' (type: %s)", dash_name, type(dashboard).__name__)
+                            dashboard = dashboards_obj[dash_name]
+                            _LOGGER.debug("    Trying dashboard '%s' (type: %s)", dash_name, type(dashboard).__name__)
                             if hasattr(dashboard, "async_load"):
                                 try:
                                     current = await dashboard.async_load(False)
+                                    _LOGGER.debug("    async_load returned: type=%s", type(current).__name__)
                                     if isinstance(current, dict):
                                         views = list(current.get("views", []))
                                         views = [v for v in views if v.get("path") != "frigate-identity"]
                                         views.append(view)
                                         current["views"] = views
                                         await dashboard.async_save(current)
-                                        _LOGGER.info("✅ Dashboard updated in '%s' (HA 2026)!", dash_name)
+                                        _LOGGER.info("✅ Dashboard updated in '%s'!", dash_name)
                                         return True
                                 except Exception as e:
-                                    _LOGGER.info("Failed to update dashboard '%s': %s", dash_name, e)
+                                    _LOGGER.debug("Failed to update dashboard '%s': %s", dash_name, str(e))
                             else:
-                                _LOGGER.info("      ✗ Dashboard '%s' has no async_load method", dash_name)
+                                _LOGGER.debug("      ✗ Dashboard '%s' has no async_load method", dash_name)
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     

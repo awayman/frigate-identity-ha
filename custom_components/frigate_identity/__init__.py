@@ -128,7 +128,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Initial generation (after a short delay so entities are loaded)
         @callback
         def _initial_regen(_now: Any = None) -> None:
-            _LOGGER.info("Triggering initial dashboard generation (15s delayed)")
+            _LOGGER.debug("Triggering initial dashboard generation (15s delayed)")
             hass.async_create_task(
                 async_generate_dashboard(hass, registry, config)
             )
@@ -161,7 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             _LOGGER.warning("No persons registered! Dashboard cannot be generated.")
             _LOGGER.warning("Add persons to Home Assistant (Settings → People) or wait for MQTT discovery.")
-        _LOGGER.info("Auto-dashboard enabled: %s", auto_dashboard)
+        _LOGGER.debug("Auto-dashboard enabled: %s", auto_dashboard)
         _LOGGER.info("========================================")
 
     hass.services.async_register(DOMAIN, "get_registry_status", _handle_get_registry_status)
