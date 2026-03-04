@@ -324,49 +324,53 @@ async def async_generate_dashboard(
                         _LOGGER.debug("  Creating dedicated 'frigate-identity' dashboard...")
                         
                         # Try to create a new dedicated dashboard for Frigate Identity
-                        if "frigate-identity" not in dashboards_obj:
-                            _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, will create one")
+                        # If it exists, delete and recreate to ensure clean state
+                        if "frigate-identity" in dashboards_obj:
+                            _LOGGER.debug("    'frigate-identity' dashboard already exists, deleting to recreate fresh...")
                             try:
-                                from homeassistant.components.lovelace.dashboard import LovelaceStorage
-                                import uuid
-                                
-                                # LovelaceStorage.__init__(hass, config) expects:
-                                # - url_path: the dashboard identifier
-                                # - id: a unique id for storage
-                                dashboard_config = {
-                                    "url_path": "frigate-identity",
-                                    "id": "frigate-identity",  # Required by LovelaceStorage
-                                    "title": "Frigate Identity",
-                                    "icon": "mdi:account-search",
-                                }
-                                
-                                new_dashboard = LovelaceStorage(hass, dashboard_config)
-                                dashboards_obj["frigate-identity"] = new_dashboard
-                                
-                                # Now save the view to the dashboard
-                                await new_dashboard.async_save({"views": [view]})
-                                _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard as separate tab!")
-                                return True
+                                old_dashboard = dashboards_obj["frigate-identity"]
+                                if hasattr(old_dashboard, "async_delete"):
+                                    await old_dashboard.async_delete()
+                                del dashboards_obj["frigate-identity"]
+                                _LOGGER.debug("    ✓ Deleted old dashboard")
                             except Exception as e:
-                                _LOGGER.error("Could not create dedicated dashboard: %s", str(e), exc_info=True)
-                                _LOGGER.warning("Dashboard will not be created. Consider creating a 'Frigate Identity' dashboard manually in Settings → Dashboards")
-                                return False
-                        else:
-                            # Dashboard already exists, add view to it
+                                _LOGGER.debug("    Could not delete old dashboard (may not exist): %s", str(e))
+                        
+                        # Now create fresh dashboard
+                        _LOGGER.debug("    Creating fresh 'frigate-identity' dashboard...")
+                        try:
+                            from homeassistant.components.lovelace.dashboard import LovelaceStorage
+                            
+                            # LovelaceStorage.__init__(hass, config) expects:
+                            # - url_path: the dashboard identifier
+                            # - id: a unique id for storage
+                            # - show_in_sidebar: make it visible in sidebar
+                            dashboard_config = {
+                                "url_path": "frigate-identity",
+                                "id": "frigate-identity",  # Required by LovelaceStorage
+                                "title": "Frigate Identity",
+                                "icon": "mdi:account-search",
+                                "show_in_sidebar": True,  # Show in sidebar
+                                "require_admin": False,  # Allow all users to see it
+                            }
+                            
+                            new_dashboard = LovelaceStorage(hass, dashboard_config)
+                            dashboards_obj["frigate-identity"] = new_dashboard
+                            
+                            # Initialize the dashboard storage by loading (creates empty structure if needed)
                             try:
-                                dashboard = dashboards_obj["frigate-identity"]
-                                if hasattr(dashboard, "async_load"):
-                                    current = await dashboard.async_load(False)
-                                    if isinstance(current, dict):
-                                        views = list(current.get("views", []))
-                                        views = [v for v in views if v.get("path") != "frigate-identity"]
-                                        views.append(view)
-                                        current["views"] = views
-                                        await dashboard.async_save(current)
-                                        _LOGGER.info("✅ Updated 'frigate-identity' dashboard!")
-                                        return True
-                            except Exception as e:
-                                _LOGGER.error("Could not update existing dashboard: %s", str(e), exc_info=True)
+                                await new_dashboard.async_load(True)  # Force reload to initialize
+                            except Exception:
+                                pass  # May not exist yet, that's fine
+                            
+                            # Now save the view to the dashboard
+                            await new_dashboard.async_save({"views": [view]})
+                            _LOGGER.info("✅ Created fresh 'frigate-identity' dashboard with %d cards!", len(view.get("cards", [])))
+                            return True
+                        except Exception as e:
+                            _LOGGER.error("Could not create dedicated dashboard: %s", str(e), exc_info=True)
+                            _LOGGER.warning("Dashboard will not be created. Consider creating a 'Frigate Identity' dashboard manually in Settings → Dashboards")
+                            return False
                     
                     _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
                     
