@@ -6,6 +6,7 @@ so it runs inside the integration — no external script or AppDaemon needed.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -266,11 +267,10 @@ async def async_generate_dashboard(
             _LOGGER.debug("Dashboard keys: %s", list(dashboards.keys()))
         
         if not dashboards:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "No lovelace_dashboards found in hass.data; "
-                "this may indicate Lovelace is in YAML mode or not initialized yet."
+                "will try HA 2026 API (lovelace.dashboards)..."
             )
-            _LOGGER.warning("Dashboard view was built but cannot be pushed to Lovelace!")
             _LOGGER.debug("Trying alternative lovelace access method...")
             
             # Try alternative access method for HA 2026+
@@ -320,14 +320,40 @@ async def async_generate_dashboard(
                                 else:
                                     _LOGGER.debug("    ✗ No async_load method")
                         
-                        # If main dashboard not updated, try all dashboards
-                        _LOGGER.debug("  Main dashboard not available, trying all dashboards...")
+                        # If main dashboard not updated, create a dedicated Frigate Identity dashboard
+                        _LOGGER.debug("  Creating dedicated 'frigate-identity' dashboard...")
                         
-                        # Try to use dedicated "frigate-identity" dashboard if it exists, or create one
+                        # Try to create a new dedicated dashboard for Frigate Identity
                         if "frigate-identity" not in dashboards_obj:
-                            _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, trying others...")
+                            _LOGGER.debug("    'frigate-identity' dashboard doesn't exist, will create one")
+                            try:
+                                # Create a new LovelaceStorage instance for the dedicated dashboard
+                                from homeassistant.components.lovelace.dashboard import LovelaceStorage
+                                
+                                # Create the dashboard config with our view
+                                dashboard_config = {
+                                    "views": [view]
+                                }
+                                
+                                # Create new LovelaceStorage object
+                                new_dashboard = LovelaceStorage(
+                                    hass=hass,
+                                    dashboard_id="frigate-identity",
+                                    yaml_path=None,
+                                    overwrite=False
+                                )
+                                dashboards_obj["frigate-identity"] = new_dashboard
+                                
+                                # Save the new dashboard
+                                await new_dashboard.async_save(dashboard_config)
+                                _LOGGER.info("✅ Created dedicated 'frigate-identity' dashboard!")
+                                return True
+                            except Exception as e:
+                                _LOGGER.debug("Could not create new dashboard: %s", str(e))
+                                _LOGGER.debug("    Falling back to adding view to existing dashboards...")
                         
-                        # Try dashboards in priority order: frigate-identity > map > others
+                        # Fallback: add view to existing dashboard if dedicated one doesn't work
+                        # Try dashboards in priority order: frigate-identity (if exists) > map > others
                         preferred_order = ["frigate-identity", "map"] + [k for k in dashboards_obj.keys() 
                                                                           if k not in [None, "lovelace", "frigate-identity", "map"]]
                         
@@ -335,7 +361,7 @@ async def async_generate_dashboard(
                             if dash_name not in dashboards_obj:
                                 continue
                             dashboard = dashboards_obj[dash_name]
-                            _LOGGER.debug("    Trying dashboard '%s' (type: %s)", dash_name, type(dashboard).__name__)
+                            _LOGGER.debug("    Adding view to dashboard '%s'", dash_name)
                             if hasattr(dashboard, "async_load"):
                                 try:
                                     current = await dashboard.async_load(False)
@@ -346,10 +372,13 @@ async def async_generate_dashboard(
                                         views.append(view)
                                         current["views"] = views
                                         await dashboard.async_save(current)
-                                        _LOGGER.info("✅ Dashboard updated in '%s'!", dash_name)
+                                        _LOGGER.debug("View structure: title='%s', path='%s', cards=%d", 
+                                                    view.get("title"), view.get("path"), len(view.get("cards", [])))
+                                        _LOGGER.debug("Dashboard now has %d views", len(current.get("views", [])))
+                                        _LOGGER.info("✅ Added view to existing '%s' dashboard", dash_name)
                                         return True
                                 except Exception as e:
-                                    _LOGGER.debug("Failed to update dashboard '%s': %s", dash_name, str(e))
+                                    _LOGGER.debug("Failed to add view to dashboard '%s': %s", dash_name, str(e))
                             else:
                                 _LOGGER.debug("      ✗ Dashboard '%s' has no async_load method", dash_name)
                     
