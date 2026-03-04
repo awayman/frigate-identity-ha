@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.15] - 2026-03-04
+
+### Changed
+- Enhance dashboard creation by adding unique ID and title for 'frigate-identity' dashboard
+
 ## [0.5.14] - 2026-03-04
 
 ### Changed
