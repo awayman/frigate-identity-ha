@@ -13,6 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar, entity_registry as er
 from homeassistant.helpers.storage import Store
+from homeassistant.components.lovelace.const import ConfigNotFound
 
 from .const import (
     CONF_SNAPSHOT_SOURCE,
@@ -334,7 +335,14 @@ async def async_generate_dashboard(
                         try:
                             default_dash = dashboards_obj.get(None)
                             if default_dash and hasattr(default_dash, "async_load"):
-                                current = await default_dash.async_load(False)
+                                try:
+                                    current = await default_dash.async_load(False)
+                                except ConfigNotFound:
+                                    # Dashboard doesn't have saved config yet (using auto-generated UI)
+                                    # Initialize with empty structure
+                                    _LOGGER.debug("Default dashboard has no saved config, initializing...")
+                                    current = {"views": []}
+                                
                                 if isinstance(current, dict):
                                     views = list(current.get("views", []))
                                     # Remove old frigate identity view if exists
