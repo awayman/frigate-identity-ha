@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-04
+
+### Changed
+- Refactor Frigate Identity integration to remove persons.yaml dependency and enhance child supervision features
+- Refactor debug mode handling to use Home Assistant's MQTT component for publishing messages
+- Update .gitignore to include .env.* and persons.yaml; modify debug dashboard ReID threshold guidance
+
 ### Changed
 - Update troubleshooting/debug threshold guidance to reflect the new default ReID similarity threshold of 0.75
 
