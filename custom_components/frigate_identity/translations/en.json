@@ -8,13 +8,15 @@
           "mqtt_topic_prefix": "MQTT topic prefix",
           "snapshot_source": "Snapshot source",
           "auto_dashboard": "Auto-generate dashboard",
-          "dashboard_refresh_time": "Daily dashboard refresh time"
+          "dashboard_refresh_time": "Daily dashboard refresh time",
+          "dashboard_name": "Dashboard name"
         },
         "data_description": {
           "mqtt_topic_prefix": "Prefix for MQTT topics published by the Frigate Identity Service (default: identity).",
           "snapshot_source": "How to source person snapshot images. 'mqtt': MQTT camera entities. 'frigate_api': Frigate HTTP API. 'frigate_integration': Official Frigate HA integration entities.",
           "auto_dashboard": "Automatically create and update a Lovelace dashboard view with person tracking cards.",
-          "dashboard_refresh_time": "Time of day (HH:MM) for a scheduled dashboard refresh."
+          "dashboard_refresh_time": "Time of day (HH:MM) for a scheduled dashboard refresh.",
+          "dashboard_name": "Name shown for the generated dashboard tab (for example: Kids)."
         }
       }
     },
@@ -31,7 +33,8 @@
           "mqtt_topic_prefix": "MQTT topic prefix",
           "snapshot_source": "Snapshot source",
           "auto_dashboard": "Auto-generate dashboard",
-          "dashboard_refresh_time": "Daily dashboard refresh time"
+          "dashboard_refresh_time": "Daily dashboard refresh time",
+          "dashboard_name": "Dashboard name"
         }
       }
     },

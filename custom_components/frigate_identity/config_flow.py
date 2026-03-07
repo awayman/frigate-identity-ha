@@ -14,10 +14,12 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_AUTO_DASHBOARD,
+    CONF_DASHBOARD_NAME,
     CONF_DASHBOARD_REFRESH_TIME,
     CONF_MQTT_TOPIC_PREFIX,
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_AUTO_DASHBOARD,
+    DEFAULT_DASHBOARD_NAME,
     DEFAULT_DASHBOARD_REFRESH_TIME,
     DEFAULT_MQTT_TOPIC_PREFIX,
     DEFAULT_SNAPSHOT_SOURCE,
@@ -64,6 +66,10 @@ class FrigateIdentityConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_DASHBOARD_REFRESH_TIME,
                         default=DEFAULT_DASHBOARD_REFRESH_TIME,
+                    ): str,
+                    vol.Optional(
+                        CONF_DASHBOARD_NAME,
+                        default=DEFAULT_DASHBOARD_NAME,
                     ): str,
                 }
             ),
@@ -116,6 +122,13 @@ class FrigateIdentityOptionsFlow(OptionsFlowWithConfigEntry):
                         default=current.get(
                             CONF_DASHBOARD_REFRESH_TIME,
                             DEFAULT_DASHBOARD_REFRESH_TIME,
+                        ),
+                    ): str,
+                    vol.Optional(
+                        CONF_DASHBOARD_NAME,
+                        default=current.get(
+                            CONF_DASHBOARD_NAME,
+                            DEFAULT_DASHBOARD_NAME,
                         ),
                     ): str,
                 }

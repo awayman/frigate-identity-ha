@@ -16,7 +16,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.components.lovelace.const import ConfigNotFound
 
 from .const import (
+    CONF_DASHBOARD_NAME,
     CONF_SNAPSHOT_SOURCE,
+    DEFAULT_DASHBOARD_NAME,
     DEFAULT_SNAPSHOT_SOURCE,
     SNAPSHOT_SOURCE_FRIGATE_API,
     SNAPSHOT_SOURCE_FRIGATE_INTEGRATION,
@@ -134,13 +136,14 @@ def _build_view(
     persons: list[str],
     snapshot_source: str,
     registry: PersonRegistry,
+    dashboard_name: str,
     area_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a complete Lovelace view dict."""
     header_card: dict[str, Any] = {
         "type": "markdown",
         "content": (
-            "# 📍 Kids – Person Tracker\n"
+            f"# 📍 {dashboard_name} – Person Tracker\n"
             "Real-time location and bounded snapshot for each tracked person."
         ),
     }
@@ -188,7 +191,7 @@ def _build_view(
         ]
 
     return {
-        "title": "Kids",
+        "title": dashboard_name,
         "path": "frigate-identity",
         "icon": "mdi:account-search",
         "cards": [header_card, *body_cards, summary_card],
@@ -242,6 +245,9 @@ async def async_generate_dashboard(
         return False
 
     snapshot_source = config.get(CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE)
+    dashboard_name = str(
+        config.get(CONF_DASHBOARD_NAME, DEFAULT_DASHBOARD_NAME)
+    ).strip() or DEFAULT_DASHBOARD_NAME
     _LOGGER.debug("Snapshot source: %s", snapshot_source)
 
     # Merge camera_zones overrides with HA area assignments
@@ -249,7 +255,13 @@ async def async_generate_dashboard(
     area_map = {**ha_areas, **registry.camera_zones}
     _LOGGER.debug("Area map loaded: %d areas", len(area_map) if area_map else 0)
 
-    view = _build_view(persons, snapshot_source, registry, area_map or None)
+    view = _build_view(
+        persons,
+        snapshot_source,
+        registry,
+        dashboard_name,
+        area_map or None,
+    )
     _LOGGER.debug("Dashboard view built with %d cards", len(view.get("cards", [])))
 
     # Push to Lovelace storage
@@ -351,8 +363,8 @@ async def async_generate_dashboard(
                                     views.append(view)
                                     current["views"] = views
                                     await default_dash.async_save(current)
-                                    _LOGGER.info("✅ Added Frigate Identity view to default dashboard!")
-                                    _LOGGER.info("   You can access it at the 'Frigate Identity' tab in your default dashboard")
+                                    _LOGGER.info("✅ Added '%s' view to default dashboard!", dashboard_name)
+                                    _LOGGER.info("   You can access it at the '%s' tab in your default dashboard", dashboard_name)
                                     return True
                         except Exception as e:
                             _LOGGER.error("Could not add view to default dashboard: %s", str(e), exc_info=True)
