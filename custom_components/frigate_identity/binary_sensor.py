@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .person_registry import PersonData, PersonRegistry
+from .person_registry import PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -15,12 +15,13 @@ from homeassistant.helpers import area_registry as ar, entity_registry as er
 
 from .const import (
     CONF_DASHBOARD_NAME,
+    CONF_DASHBOARD_PERSONS,
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_DASHBOARD_NAME,
+    DEFAULT_DASHBOARD_PERSONS,
     DEFAULT_SNAPSHOT_SOURCE,
     DOMAIN,
     SNAPSHOT_SOURCE_FRIGATE_API,
-    SNAPSHOT_SOURCE_FRIGATE_INTEGRATION,
     SNAPSHOT_SOURCE_MQTT,
 )
 from .person_registry import PersonRegistry
@@ -290,12 +291,33 @@ async def async_generate_dashboard(
     Returns True on success, False on failure.
     """
     _LOGGER.debug("=== DASHBOARD GENERATION STARTED ===")
-    persons = registry.person_names
-    _LOGGER.debug("Persons in registry: %d - %s", len(persons), persons)
+    
+    # Apply person filter if configured
+    filter_persons = config.get(CONF_DASHBOARD_PERSONS, DEFAULT_DASHBOARD_PERSONS)
+    if filter_persons:
+        # Non-empty list: show only selected persons that exist in registry
+        persons = [p for p in registry.person_names if p in filter_persons]
+        _LOGGER.debug(
+            "Applying person filter: %d selected, %d matched in registry",
+            len(filter_persons),
+            len(persons),
+        )
+    else:
+        # Empty list (default): show all persons including new discoveries
+        persons = registry.person_names
+        _LOGGER.debug("No person filter applied; showing all persons")
+    
+    _LOGGER.debug("Persons for dashboard: %d - %s", len(persons), persons)
     
     if not persons:
-        _LOGGER.warning("No persons registered; skipping dashboard generation")
-        _LOGGER.warning("Dashboard cannot be created without persons!")
+        _LOGGER.warning("No persons to display on dashboard; skipping generation")
+        if filter_persons:
+            _LOGGER.warning(
+                "Filter specified %d persons but none exist in registry",
+                len(filter_persons),
+            )
+        else:
+            _LOGGER.warning("Dashboard cannot be created without persons!")
         return False
 
     snapshot_source = config.get(CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE)

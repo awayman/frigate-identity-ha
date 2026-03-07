@@ -11,15 +11,18 @@ from homeassistant.config_entries import (
     OptionsFlowWithConfigEntry,
 )
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_AUTO_DASHBOARD,
     CONF_DASHBOARD_NAME,
+    CONF_DASHBOARD_PERSONS,
     CONF_DASHBOARD_REFRESH_TIME,
     CONF_MQTT_TOPIC_PREFIX,
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_AUTO_DASHBOARD,
     DEFAULT_DASHBOARD_NAME,
+    DEFAULT_DASHBOARD_PERSONS,
     DEFAULT_DASHBOARD_REFRESH_TIME,
     DEFAULT_MQTT_TOPIC_PREFIX,
     DEFAULT_SNAPSHOT_SOURCE,
@@ -94,6 +97,12 @@ class FrigateIdentityOptionsFlow(OptionsFlowWithConfigEntry):
             return self.async_create_entry(data=user_input)
 
         current = {**self.config_entry.data, **self.config_entry.options}
+        
+        # Build person list from registry for multi-select
+        person_names_dict = {}
+        if DOMAIN in self.hass.data and "registry" in self.hass.data[DOMAIN]:
+            registry = self.hass.data[DOMAIN]["registry"]
+            person_names_dict = {name: name for name in registry.person_names}
 
         return self.async_show_form(
             step_id="init",
@@ -131,6 +140,13 @@ class FrigateIdentityOptionsFlow(OptionsFlowWithConfigEntry):
                             DEFAULT_DASHBOARD_NAME,
                         ),
                     ): str,
+                    vol.Optional(
+                        CONF_DASHBOARD_PERSONS,
+                        default=current.get(
+                            CONF_DASHBOARD_PERSONS,
+                            DEFAULT_DASHBOARD_PERSONS,
+                        ),
+                    ): cv.multi_select(person_names_dict),
                 }
             ),
         )

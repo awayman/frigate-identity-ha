@@ -9,6 +9,7 @@ CONF_SNAPSHOT_SOURCE = "snapshot_source"
 CONF_AUTO_DASHBOARD = "auto_dashboard"
 CONF_DASHBOARD_REFRESH_TIME = "dashboard_refresh_time"
 CONF_DASHBOARD_NAME = "dashboard_name"
+CONF_DASHBOARD_PERSONS = "dashboard_persons"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_MQTT_TOPIC_PREFIX = "identity"
@@ -16,6 +17,7 @@ DEFAULT_SNAPSHOT_SOURCE = "mqtt"
 DEFAULT_AUTO_DASHBOARD = True
 DEFAULT_DASHBOARD_REFRESH_TIME = "03:00"
 DEFAULT_DASHBOARD_NAME = "Kids"
+DEFAULT_DASHBOARD_PERSONS = []
 
 # ── Person entity custom attributes ──────────────────────────────────────────
 ATTR_FRIGATE_IDENTITY_IS_CHILD = "frigate_identity_is_child"

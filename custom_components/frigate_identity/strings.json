@@ -34,7 +34,11 @@
           "snapshot_source": "Snapshot source",
           "auto_dashboard": "Auto-generate dashboard",
           "dashboard_refresh_time": "Daily dashboard refresh time",
-          "dashboard_name": "Dashboard name"
+          "dashboard_name": "Dashboard name",
+          "dashboard_persons": "Persons to show on dashboard"
+        },
+        "data_description": {
+          "dashboard_persons": "Select specific persons to display. Leave empty to show all persons (including new discoveries)."
         }
       }
     },
