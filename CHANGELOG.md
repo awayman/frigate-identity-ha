@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-03-07
+
+### Changed
+- Refactor dashboard generation logic to utilize Lovelace API and create dedicated sidebar dashboard for Frigate Identity
+
 ## [0.5.19] - 2026-03-07
 
 ### Changed
