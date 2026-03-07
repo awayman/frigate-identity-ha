@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-03-07
+
+### Changed
+- Add dashboard name configuration option and update related logic
+- Update dashboard title and header for Kids Person Tracker
+
 ## [0.5.18] - 2026-03-04
 
 ### Changed
