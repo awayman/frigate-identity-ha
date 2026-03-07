@@ -1,8 +1,7 @@
 """Dashboard generation for Frigate Identity.
 
 Builds a Lovelace view and pushes it to HA's storage-mode dashboard.
-Absorbs the dashboard-building logic from examples/generate_dashboard.py
-so it runs inside the integration — no external script or AppDaemon needed.
+Automatically creates and maintains a dedicated dashboard for person tracking.
 """
 from __future__ import annotations
 

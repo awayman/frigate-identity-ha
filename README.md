@@ -2,18 +2,43 @@
 
 A Home Assistant custom component that integrates with the [Frigate Identity Service](https://github.com/awayman/frigate_identity_service) to provide person identification continuity and location tracking.
 
+## Table of Contents
+
+- [Features](#features)
+- [Quick Setup (5 steps)](#quick-setup-5-steps)
+- [What Gets Created](#what-gets-created)
+- [Blueprints](#blueprints)
+- [Dashboard](#dashboard)
+- [Configuration](#configuration)
+  - [Config Flow](#config-flow)
+  - [Person Profile Services](#person-profile-services)
+- [Services](#services)
+- [Snapshot Sources](#snapshot-sources)
+- [MQTT Topics](#mqtt-topics)
+- [Installation](#installation)
+  - [HACS (Recommended)](#hacs-recommended)
+  - [Manual Installation](#manual-installation)
+- [Troubleshooting](#troubleshooting)
+  - [Integration not showing sensors](#integration-not-showing-sensors)
+  - [Dashboard not appearing](#dashboard-not-appearing)
+  - [Debug Logging](#debug-logging)
+- [Support](#support)
+- [License](#license)
+
 ## Features
 
 - **Real-time person identification** — Uses Frigate's facial recognition as primary source
 - **ReID continuity** — Maintains identity when faces are not visible
 - **Per-person tracking** — Track location, zones, and confidence for each person
 - **Live snapshots** — Per-person MQTT camera entities created automatically
-- **Auto-generated dashboard** — Lovelace view created and updated automatically on setup
+- **Auto-generated dashboard** — Dedicated Lovelace dashboard created and updated automatically
 - **Supervision tracking** — Binary sensors track if children are supervised by adults
 - **Blueprint automations** — Safety blueprints auto-deployed to HA on integration load
 - **Vehicle detection** — Safety alerts when vehicles detected with children outside
 - **Zone-aware** — Uses HA Areas for cross-camera zone grouping
 - **Config flow UI** — Full setup via Settings → Integrations (no YAML editing)
+- **Person profile services** — Mark children/adults and define per-child safe zones from HA services
+- **Debug controls** — Toggle Frigate Identity Service debug mode from Home Assistant
 - **HACS auto-update** — Install via HACS, get updates automatically
 
 ## Quick Setup (5 steps)
@@ -56,9 +81,9 @@ Blueprints are **automatically deployed** to `/config/blueprints/automation/frig
 
 ## Dashboard
 
-A **Frigate Identity** Lovelace view is auto-generated and pushed to your dashboard. It includes:
+A dedicated Lovelace dashboard (`/lovelace/frigate-identity`) is auto-generated and updated. It includes:
 
-- Header with system status
+- Header with person tracker status
 - Person cards grouped by HA Area (or flat layout if no areas assigned)
 - Each person card shows: snapshot, location, zones, confidence, source, last seen
 - Children's cards include a supervised status row
@@ -80,8 +105,9 @@ All settings are configured via the UI:
 |---|---|---|
 | MQTT topic prefix | `identity` | Prefix for MQTT topics (e.g., `identity/person/#`) |
 | Snapshot source | `mqtt` | `mqtt`, `frigate_api`, or `frigate_integration` |
-| Auto-generate dashboard | `true` | Automatically create/update Lovelace view |
+| Auto-generate dashboard | `true` | Automatically create/update the dedicated dashboard |
 | Dashboard refresh time | `03:00` | Daily dashboard refresh time (HH:MM) |
+| Dashboard name | `Kids` | Sidebar title used for the dedicated Lovelace dashboard |
 
 Change settings any time via **Settings → Integrations → Frigate Identity → Configure**.
 
@@ -118,6 +144,18 @@ data:
   person_name: Alice
   safe_zones:
     - safe_play_area
+
+## Services
+
+The integration registers these Home Assistant services:
+
+| Service | Purpose |
+|---|---|
+| `frigate_identity.regenerate_dashboard` | Force dashboard regeneration immediately |
+| `frigate_identity.get_registry_status` | Log current person registry state for troubleshooting |
+| `frigate_identity.set_debug_mode` | Publish debug on/off command to Frigate Identity Service |
+| `frigate_identity.update_person_profile` | Set child/adult status and safe zones for a person |
+| `frigate_identity.update_child_safe_zones` | Backward-compatible alias for safe-zones-only updates |
 ```
 
 ## Snapshot Sources
@@ -126,7 +164,7 @@ data:
 |---|---|---|---|
 | `mqtt` *(default)* | `camera.frigate_identity_<name>_snapshot` | No | Automatic |
 | `frigate_api` | `image.frigate_identity_<name>_snapshot_image` | No | No |
-| `frigate_integration` | `image.<camera>_person` | Yes | No |
+| `frigate_integration` | `image.<person>_person` | Yes | No |
 
 ## MQTT Topics
 
@@ -164,15 +202,6 @@ The integration subscribes to these topics (prefix is configurable):
 ### Manual Installation
 
 Copy the `custom_components/frigate_identity` folder to your HA config directory, restart HA, then add via Settings → Integrations.
-
-## Legacy Tools
-
-The following are still available but **no longer required**:
-
-- **`examples/generate_dashboard.py`** — standalone CLI dashboard generator. Useful if you prefer manual control or YAML-mode dashboards.
-- **`appdaemon/`** — AppDaemon app for automatic dashboard regeneration. The integration now handles this natively.
-
-See [CONFIGURATION_EXAMPLES.md](CONFIGURATION_EXAMPLES.md) for advanced manual configuration.
 
 ## Troubleshooting
 

@@ -1,6 +1,23 @@
 # Frigate Identity - Home Assistant Configuration Examples
 
-This guide shows how to configure Home Assistant to use Frigate Identity for child safety monitoring and location tracking.
+This guide shows advanced configuration options and examples for manually defining template sensors and automations.
+
+> **Note:** The integration automatically creates all necessary entities. This guide is for advanced users who want custom templates or additional automation logic.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Basic Setup](#basic-setup)
+- [Person Profile Configuration (Home Assistant Services)](#person-profile-configuration-home-assistant-services)
+- [Per-Person Template Sensors (Optional)](#per-person-template-sensors-optional)
+- [Supervision Detection (Optional Advanced)](#supervision-detection-optional-advanced)
+- [Safety Automations](#safety-automations)
+- [Dashboard Example](#dashboard-example)
+- [Frigate Configuration](#frigate-configuration)
+- [Testing](#testing)
+- [Advanced: Time-Based Confidence Decay](#advanced-time-based-confidence-decay)
+- [Troubleshooting](#troubleshooting)
+- [Next Steps](#next-steps)
 
 ## Prerequisites
 
@@ -12,32 +29,17 @@ This guide shows how to configure Home Assistant to use Frigate Identity for chi
 
 ## Basic Setup
 
-### 1. MQTT Camera Entities for Live Snapshots
+### Integration-Created Entities
 
-Add MQTT camera entities to display live person snapshots:
+The Frigate Identity integration **automatically creates** the following entities when persons are detected:
 
-```yaml
-# configuration.yaml
-mqtt:
-  camera:
-    # Per-person snapshot cameras (update in real-time)
-    - name: "Alice Snapshot"
-      unique_id: "frigate_identity_alice_snapshot"
-      topic: "identity/snapshots/Alice"
-      
-    - name: "Bob Snapshot"
-      unique_id: "frigate_identity_bob_snapshot"
-      topic: "identity/snapshots/Bob"
-      
-    - name: "Dad Snapshot"
-      unique_id: "frigate_identity_dad_snapshot"
-      topic: "identity/snapshots/Dad"
-    
-    # Vehicle detection snapshot
-    - name: "Driveway Vehicle"
-      unique_id: "frigate_identity_vehicle_driveway"
-      topic: "identity/snapshots/vehicle_driveway"
-```
+- `camera.frigate_identity_<name>_snapshot` — MQTT camera with latest cropped snapshot (when snapshot_source is "mqtt")
+- `sensor.frigate_identity_<name>_location` — Current camera location with zones, confidence, and metadata
+- `binary_sensor.frigate_identity_<name>_supervised` — Supervision status for children
+- `sensor.frigate_identity_last_person` — Last detected person
+- `sensor.frigate_identity_all_persons` — All tracked persons with full data
+
+**No manual YAML configuration is required** for basic functionality.
 
 ---
 

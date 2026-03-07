@@ -2,6 +2,21 @@
 
 This guide will help you get Frigate Identity Service running and integrated with Home Assistant in under 15 minutes.
 
+## Table of Contents
+
+- [Prerequisites Checklist](#prerequisites-checklist)
+- [Step 1: Configure Frigate MQTT Snapshots](#step-1-configure-frigate-mqtt-snapshots)
+- [Step 2: Install & Run Frigate Identity Service](#step-2-install--run-frigate-identity-service)
+- [Step 3: Install Home Assistant Integration via HACS](#step-3-install-home-assistant-integration-via-hacs)
+- [Step 4: Add the Integration](#step-4-add-the-integration)
+- [Step 5: Configure Children and Safe Zones (HA Services)](#step-5-configure-children-and-safe-zones-ha-services)
+- [Step 6: Create Your First Automation](#step-6-create-your-first-automation)
+- [Step 7: Test](#step-7-test)
+- [Changing Settings](#changing-settings)
+- [What Happens Automatically](#what-happens-automatically)
+- [Troubleshooting](#troubleshooting)
+- [Success Checklist](#success-checklist)
+
 ## Prerequisites Checklist
 
 - [ ] Frigate installed and running
@@ -178,7 +193,7 @@ All safety automation blueprints are copied to `/config/blueprints/automation/fr
 - Notification Action Handlers
 
 ### Dashboard Generated
-A **Frigate Identity** view is automatically added to your Lovelace dashboard with:
+A dedicated **Frigate Identity** dashboard is automatically created at `/lovelace/frigate-identity` with:
 - Person snapshot cards grouped by area
 - Location, zones, confidence, and supervision status
 - System status summary

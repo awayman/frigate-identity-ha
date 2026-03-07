@@ -1,3 +1,0 @@
-# Python packages required by the Frigate Identity AppDaemon app.
-# AppDaemon installs these automatically when the add-on starts.
-pyyaml
