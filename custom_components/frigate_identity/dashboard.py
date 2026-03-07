@@ -140,7 +140,7 @@ def _build_view(
     header_card: dict[str, Any] = {
         "type": "markdown",
         "content": (
-            "# 📍 Frigate Identity – Person Tracker\n"
+            "# 📍 Kids – Person Tracker\n"
             "Real-time location and bounded snapshot for each tracked person."
         ),
     }
@@ -188,7 +188,7 @@ def _build_view(
         ]
 
     return {
-        "title": "Frigate Identity",
+        "title": "Kids",
         "path": "frigate-identity",
         "icon": "mdi:account-search",
         "cards": [header_card, *body_cards, summary_card],
