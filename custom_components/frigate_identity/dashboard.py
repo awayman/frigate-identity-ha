@@ -19,6 +19,7 @@ from .const import (
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_DASHBOARD_NAME,
     DEFAULT_SNAPSHOT_SOURCE,
+    DOMAIN,
     SNAPSHOT_SOURCE_FRIGATE_API,
     SNAPSHOT_SOURCE_FRIGATE_INTEGRATION,
     SNAPSHOT_SOURCE_MQTT,
@@ -47,15 +48,59 @@ def _snapshot_entity_id(person: str, snapshot_source: str) -> str:
     return f"image.{slug}_person"
 
 
+def _resolve_entity_id(
+    hass: HomeAssistant,
+    *,
+    domain: str,
+    unique_id: str,
+    candidates: list[str],
+) -> str:
+    """Resolve an entity ID via entity registry, then state/candidate fallbacks."""
+    try:
+        ent_reg = er.async_get(hass)
+        resolved = ent_reg.async_get_entity_id(domain, DOMAIN, unique_id)
+        if resolved:
+            return resolved
+    except Exception:  # noqa: BLE001
+        _LOGGER.debug("Unable to resolve %s/%s via entity registry", domain, unique_id)
+
+    for candidate in candidates:
+        if hass.states.get(candidate) is not None:
+            return candidate
+
+    return candidates[0]
+
+
 def _person_card(
+    hass: HomeAssistant,
     person: str,
     snapshot_source: str,
     registry: PersonRegistry,
 ) -> dict[str, Any]:
     """Build a vertical-stack card for one person."""
     slug = _slug(person)
-    location_entity = f"sensor.frigate_identity_{slug}_location"
-    snap_entity = _snapshot_entity_id(person, snapshot_source)
+    location_entity = _resolve_entity_id(
+        hass,
+        domain="sensor",
+        unique_id=f"frigate_identity_{slug}_location",
+        candidates=[
+            f"sensor.frigate_identity_{slug}_location",
+            f"sensor.{slug}_location",
+        ],
+    )
+
+    if snapshot_source == SNAPSHOT_SOURCE_MQTT:
+        snap_entity = _resolve_entity_id(
+            hass,
+            domain="camera",
+            unique_id=f"frigate_identity_{slug}_snapshot",
+            candidates=[
+                f"camera.frigate_identity_{slug}_snapshot",
+                f"camera.{slug}_snapshot",
+            ],
+        )
+    else:
+        snap_entity = _snapshot_entity_id(person, snapshot_source)
 
     snapshot_card: dict[str, Any] = {
         "type": "picture-entity",
@@ -76,10 +121,19 @@ def _person_card(
     # Check if child using the registry person data
     person_obj = registry.get_person(person)
     if person_obj and person_obj.is_child:
+        supervised_entity = _resolve_entity_id(
+            hass,
+            domain="binary_sensor",
+            unique_id=f"frigate_identity_{slug}_supervised",
+            candidates=[
+                f"binary_sensor.frigate_identity_{slug}_supervised",
+                f"binary_sensor.{slug}_supervised",
+            ],
+        )
         status_entities.insert(
             1,
             {
-                "entity": f"binary_sensor.frigate_identity_{slug}_supervised",
+                "entity": supervised_entity,
                 "name": "Supervised",
             },
         )
@@ -106,6 +160,7 @@ def _area_icon(area_name: str) -> str:
 
 
 def _area_section(
+    hass: HomeAssistant,
     area_name_str: str,
     persons_in_area: list[str],
     snapshot_source: str,
@@ -118,7 +173,7 @@ def _area_section(
     ]
 
     person_cards = [
-        _person_card(p, snapshot_source, registry) for p in persons_in_area
+        _person_card(hass, p, snapshot_source, registry) for p in persons_in_area
     ]
     if len(person_cards) > 1:
         cards.append({"type": "horizontal-stack", "cards": person_cards})
@@ -132,6 +187,7 @@ def _area_section(
 
 
 def _build_view(
+    hass: HomeAssistant,
     persons: list[str],
     snapshot_source: str,
     registry: PersonRegistry,
@@ -176,17 +232,17 @@ def _build_view(
         for area in ordered_areas:
             ppl = [p for p in persons if person_area[p] == area]
             body_cards.extend(
-                _area_section(area, ppl, snapshot_source, registry)
+                _area_section(hass, area, ppl, snapshot_source, registry)
             )
 
         unassigned = [p for p in persons if not person_area[p]]
         if unassigned:
             body_cards.extend(
-                _area_section("Unassigned", unassigned, snapshot_source, registry)
+                _area_section(hass, "Unassigned", unassigned, snapshot_source, registry)
             )
     else:
         body_cards = [
-            _person_card(p, snapshot_source, registry) for p in persons
+            _person_card(hass, p, snapshot_source, registry) for p in persons
         ]
 
     return {
@@ -255,6 +311,7 @@ async def async_generate_dashboard(
     _LOGGER.debug("Area map loaded: %d areas", len(area_map) if area_map else 0)
 
     view = _build_view(
+        hass,
         persons,
         snapshot_source,
         registry,
