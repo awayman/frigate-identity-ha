@@ -6,14 +6,13 @@ so it runs inside the integration — no external script or AppDaemon needed.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
+from homeassistant.components import frontend
+from homeassistant.components.lovelace.const import ConfigNotFound
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar, entity_registry as er
-from homeassistant.helpers.storage import Store
-from homeassistant.components.lovelace.const import ConfigNotFound
 
 from .const import (
     CONF_DASHBOARD_NAME,
@@ -274,176 +273,85 @@ async def async_generate_dashboard(
     )
     _LOGGER.debug("Available hass.data keys: %s", list(hass.data.keys()))
     try:
-        # Try accessing lovelace_dashboards (modern HA approach)
-        dashboards = hass.data.get("lovelace_dashboards", {})
-        _LOGGER.debug("Found %d lovelace_dashboards in hass.data", len(dashboards))
-        if dashboards:
-            _LOGGER.debug("Dashboard keys: %s", list(dashboards.keys()))
-        
-        if not dashboards:
-            _LOGGER.debug(
-                "No lovelace_dashboards found in hass.data; "
-                "will try HA 2026 API (lovelace.dashboards)..."
-            )
-            _LOGGER.debug("Trying alternative lovelace access method...")
-            
-            # Try alternative access method for HA 2026+
-            lovelace_storage = hass.data.get("lovelace")
-            if lovelace_storage:
-                _LOGGER.debug("Found 'lovelace' in hass.data, attempting alternative method")
-                _LOGGER.debug("Lovelace object type: %s", type(lovelace_storage).__name__)
-                
-                try:
-                    # Log available methods
-                    available_attrs = [attr for attr in dir(lovelace_storage) if not attr.startswith('_')]
-                    _LOGGER.debug("Lovelace object has these attributes: %s", available_attrs)
-                    
-                    # HA 2026: lovelace.dashboards replaces lovelace_dashboards
-                    if hasattr(lovelace_storage, "dashboards"):
-                        _LOGGER.debug("✓ Has dashboards attribute (HA 2026 API)")
-                        dashboards_obj = lovelace_storage.dashboards
-                        _LOGGER.debug("  dashboards type: %s", type(dashboards_obj).__name__)
-                        
-                        # Try to find the default dashboard
-                        for dash_key in [None, "lovelace"]:
-                            if dash_key in dashboards_obj:
-                                dashboard = dashboards_obj[dash_key]
-                                _LOGGER.debug("  Found dashboard with key '%s'", dash_key)
-                                _LOGGER.debug("    Dashboard type: %s", type(dashboard).__name__)
-                                
-                                # HA 2026: LovelaceStorage has async_load/async_save directly
-                                if hasattr(dashboard, "async_load"):
-                                    _LOGGER.debug("    ✓ Has async_load directly on dashboard object")
-                                    try:
-                                        current = await dashboard.async_load(False)
-                                        _LOGGER.debug("    async_load returned: type=%s, value=%s", type(current).__name__, current if not isinstance(current, dict) else "dict")
-                                        if isinstance(current, dict):
-                                            views = list(current.get("views", []))
-                                            views = [v for v in views if v.get("path") != "frigate-identity"]
-                                            views.append(view)
-                                            current["views"] = views
-                                            if hasattr(dashboard, "async_save"):
-                                                await dashboard.async_save(current)
-                                                _LOGGER.info("✅ Dashboard updated via LovelaceStorage.async_load/save (HA 2026)!")
-                                                return True
-                                        else:
-                                            _LOGGER.info("    async_load returned non-dict: %s", type(current).__name__)
-                                    except Exception as e:
-                                        _LOGGER.debug("Exception updating dashboard '%s': %s", dash_key, str(e))
-                                        continue  # Try next dashboard
-                                else:
-                                    _LOGGER.debug("    ✗ No async_load method")
-                        
-                        # If main dashboard not updated, create a dedicated Frigate Identity dashboard
-                        _LOGGER.debug("  Creating dedicated 'frigate-identity' dashboard...")
-                        
-                        # For now, add the view to the default dashboard instead
-                        # Creating dedicated dashboards programmatically in HA 2026 requires
-                        # frontend interaction that we cannot reliably automate
-                        _LOGGER.info("Auto-dashboard feature: Please create a dashboard manually named 'Frigate Identity'")
-                        _LOGGER.info("The integration will automatically add the view to the default dashboard for now")
-                        
-                        # Try to add to default dashboard
-                        try:
-                            default_dash = dashboards_obj.get(None)
-                            if default_dash and hasattr(default_dash, "async_load"):
-                                try:
-                                    current = await default_dash.async_load(False)
-                                except ConfigNotFound:
-                                    # Dashboard doesn't have saved config yet (using auto-generated UI)
-                                    # Initialize with empty structure
-                                    _LOGGER.debug("Default dashboard has no saved config, initializing...")
-                                    current = {"views": []}
-                                
-                                if isinstance(current, dict):
-                                    views = list(current.get("views", []))
-                                    # Remove old frigate identity view if exists
-                                    views = [v for v in views if v.get("path") != "frigate-identity"]
-                                    # Add new view
-                                    views.append(view)
-                                    current["views"] = views
-                                    await default_dash.async_save(current)
-                                    _LOGGER.info("✅ Added '%s' view to default dashboard!", dashboard_name)
-                                    _LOGGER.info("   You can access it at the '%s' tab in your default dashboard", dashboard_name)
-                                    return True
-                        except Exception as e:
-                            _LOGGER.error("Could not add view to default dashboard: %s", str(e), exc_info=True)
-                        
-                        return False
-                    
-                    _LOGGER.error("Could not find compatible method to update dashboard in HA 2026")
-                    
-                except Exception:
-                    _LOGGER.exception("Exception while trying alternative lovelace access")
-            else:
-                _LOGGER.warning("'lovelace' key not found in hass.data")
-            
+        lovelace_data = hass.data.get("lovelace")
+        if not lovelace_data or not hasattr(lovelace_data, "dashboards"):
+            _LOGGER.error("Lovelace dashboards API unavailable; cannot generate sidebar dashboard")
             return False
-        
-        # Try to find the main dashboard (usually key is None or "lovelace")
-        for dash_key in [None, "lovelace"]:
-            if dash_key in dashboards:
-                dashboard_obj = dashboards[dash_key]
-                _LOGGER.info(
-                    "Found dashboard with key '%s' (type=%s)",
-                    dash_key,
-                    type(dashboard_obj).__name__,
-                )
-                
-                if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
-                    config_obj = dashboard_obj.config
-                    if hasattr(config_obj, "async_load"):
-                        _LOGGER.info("Loading current dashboard config")
-                        current = await config_obj.async_load(False)
-                        
-                        if isinstance(current, dict):
-                            views: list[dict[str, Any]] = list(current.get("views", []))
-                            _LOGGER.info("Current dashboard has %d view(s)", len(views))
-                            views = [v for v in views if v.get("path") != "frigate-identity"]
-                            views.append(view)
-                            current["views"] = views
-                            await config_obj.async_save(current)
-                            _LOGGER.info("Frigate Identity dashboard view updated successfully")
-                            return True
-                else:
-                    _LOGGER.warning("Dashboard object missing 'config' attribute or has method signature changes")
-        
-        # If we didn't find the main dashboard, try all dashboards
-        _LOGGER.info("Main dashboard (None/'lovelace') not found, trying all %d dashboards", len(dashboards))
-        for dash_name, dashboard_obj in dashboards.items():
-            _LOGGER.info(
-                "Trying dashboard '%s' (type=%s)",
-                dash_name,
-                type(dashboard_obj).__name__,
-            )
-            _LOGGER.debug("Dashboard object attributes: %s", dir(dashboard_obj))
-            
-            if hasattr(dashboard_obj, "config") and dashboard_obj.config is not None:
-                config_obj = dashboard_obj.config
-                if hasattr(config_obj, "async_load"):
-                    current = await config_obj.async_load(False)
-                    if isinstance(current, dict):
-                        views = list(current.get("views", []))
-                        views = [v for v in views if v.get("path") != "frigate-identity"]
-                        views.append(view)
-                        current["views"] = views
-                        await config_obj.async_save(current)
-                        _LOGGER.info(
-                            "Frigate Identity dashboard view updated in dashboard '%s'",
-                            dash_name,
-                        )
-                        return True
-                else:
-                    _LOGGER.warning("Config object missing async_load method")
-            else:
-                _LOGGER.warning("Dashboard '%s' missing config attribute", dash_name)
-        
-        _LOGGER.error(
-            "Could not find a suitable lovelace dashboard to update. "
-            "Lovelace may be in YAML mode, not properly initialized, or the API has changed in HA 2026. "
-            "Check the logs above for details about available dashboards and their structure."
+
+        dashboards_obj = lovelace_data.dashboards
+        target_url_path = "frigate-identity"
+        target_dashboard = dashboards_obj.get(target_url_path)
+
+        if target_dashboard is None:
+            from homeassistant.components.lovelace.dashboard import LovelaceStorage
+
+            dashboard_config = {
+                "id": target_url_path,
+                "url_path": target_url_path,
+                "title": dashboard_name,
+                "icon": "mdi:account-search",
+                "show_in_sidebar": True,
+                "require_admin": False,
+                "mode": "storage",
+            }
+            target_dashboard = LovelaceStorage(hass, dashboard_config)
+            dashboards_obj[target_url_path] = target_dashboard
+            _LOGGER.info("Created dedicated '%s' Lovelace dashboard object", target_url_path)
+        elif getattr(target_dashboard, "config", None):
+            target_dashboard.config["title"] = dashboard_name
+            target_dashboard.config["icon"] = "mdi:account-search"
+            target_dashboard.config["show_in_sidebar"] = True
+            target_dashboard.config["require_admin"] = False
+
+        try:
+            current = await target_dashboard.async_load(False)
+        except ConfigNotFound:
+            current = {"views": []}
+
+        if not isinstance(current, dict):
+            current = {"views": []}
+
+        views = list(current.get("views", []))
+        views = [v for v in views if v.get("path") != "frigate-identity"]
+        views.append(view)
+        current["views"] = views
+        await target_dashboard.async_save(current)
+
+        # Register/update dedicated sidebar panel so the dashboard name appears in sidebar.
+        frontend.async_register_built_in_panel(
+            hass,
+            "lovelace",
+            frontend_url_path=target_url_path,
+            require_admin=False,
+            show_in_sidebar=True,
+            sidebar_title=dashboard_name,
+            sidebar_icon="mdi:account-search",
+            config={"mode": "storage"},
+            update=True,
         )
-        return False
+
+        # Remove any old Frigate Identity tab from default dashboards.
+        for default_key in (None, "lovelace"):
+            default_dash = dashboards_obj.get(default_key)
+            if not default_dash or default_dash is target_dashboard:
+                continue
+            if not hasattr(default_dash, "async_load") or not hasattr(default_dash, "async_save"):
+                continue
+            try:
+                default_config = await default_dash.async_load(False)
+            except ConfigNotFound:
+                continue
+
+            if not isinstance(default_config, dict):
+                continue
+            default_views = list(default_config.get("views", []))
+            filtered_views = [v for v in default_views if v.get("path") != "frigate-identity"]
+            if len(filtered_views) != len(default_views):
+                default_config["views"] = filtered_views
+                await default_dash.async_save(default_config)
+
+        _LOGGER.info("✅ Sidebar dashboard '%s' updated with title '%s'", target_url_path, dashboard_name)
+        return True
 
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
