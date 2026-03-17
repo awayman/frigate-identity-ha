@@ -21,6 +21,17 @@ REPO_ROOT = Path(__file__).resolve().parent
 MANIFEST_JSON = REPO_ROOT / "custom_components" / "frigate_identity" / "manifest.json"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 
+UNRELEASED_TEMPLATE = """## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+"""
+
 
 def run(cmd: list[str], check: bool = True, capture: bool = False) -> str:
     """Run a shell command from the repo root."""
@@ -100,34 +111,40 @@ def categorize_commits(commits: list[str]) -> dict[str, list[str]]:
     }
 
     # Conventional commit prefixes
-    feat_pattern = r"^feat(?:\([^)]*\))?:\s*(.+)$"
-    fix_pattern = r"^fix(?:\([^)]*\))?:\s*(.+)$"
-    refactor_pattern = r"^(?:refactor|perf|change|update|style)(?:\([^)]*\))?:\s*(.+)$"
-    remove_pattern = r"^(?:remove|deprecate|revert)(?:\([^)]*\))?:\s*(.+)$"
+    feat_pattern = r"^feat(?:\(([^)]*)\))?:\s*(.+)$"
+    fix_pattern = r"^fix(?:\(([^)]*)\))?:\s*(.+)$"
+    refactor_pattern = r"^(?:refactor|perf|change|update|style)(?:\(([^)]*)\))?:\s*(.+)$"
+    remove_pattern = r"^(?:remove|deprecate|revert)(?:\(([^)]*)\))?:\s*(.+)$"
+
+    def _fmt(scope: str | None, message: str) -> str:
+        message = message.strip()
+        if scope:
+            return f"- {scope}: {message}"
+        return f"- {message}"
 
     for commit in commits:
         # Try feat pattern
         match = re.match(feat_pattern, commit)
         if match:
-            categories["Added"].append(f"- {match.group(1)}")
+            categories["Added"].append(_fmt(match.group(1), match.group(2)))
             continue
 
         # Try fix pattern
         match = re.match(fix_pattern, commit)
         if match:
-            categories["Fixed"].append(f"- {match.group(1)}")
+            categories["Fixed"].append(_fmt(match.group(1), match.group(2)))
             continue
 
         # Try remove pattern
         match = re.match(remove_pattern, commit)
         if match:
-            categories["Removed"].append(f"- {match.group(1)}")
+            categories["Removed"].append(_fmt(match.group(1), match.group(2)))
             continue
 
         # Try refactor pattern
         match = re.match(refactor_pattern, commit)
         if match:
-            categories["Changed"].append(f"- {match.group(1)}")
+            categories["Changed"].append(_fmt(match.group(1), match.group(2)))
             continue
 
         # Default to Changed if no pattern matches
@@ -164,9 +181,14 @@ def update_changelog(new_version: str) -> None:
             if categories[category]:
                 new_version_section += f"\n### {category}\n" + "\n".join(categories[category])
     
-    # Replace [Unreleased] with new version and add fresh [Unreleased] section
-    new_header = f"## [Unreleased]\n\n{new_version_section}"
-    updated = text.replace("## [Unreleased]", new_header, 1)
+    # Replace the whole [Unreleased] block with a fresh template and the new version section.
+    # This keeps a consistent structure for future manual notes and richer release bodies.
+    unreleased_block_pattern = re.compile(
+        r"^## \[Unreleased\]\n(?:.*?\n)?(?=^## \[|\Z)",
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    new_header = f"{UNRELEASED_TEMPLATE}\n\n{new_version_section}\n"
+    updated = unreleased_block_pattern.sub(new_header, text, count=1)
 
     CHANGELOG.write_text(updated, encoding="utf-8")
     print(f"  Updated CHANGELOG.md with [{new_version}] - {today}")

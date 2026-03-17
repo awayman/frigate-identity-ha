@@ -266,6 +266,36 @@ logger:
 - GitHub Actions `release.yml` creates a GitHub Release on `v*` tags
 - HACS picks up new releases automatically
 
+### Commit Message Convention
+
+When generating commit messages in VS Code (including the **Generate Commit Message** button), use this format:
+
+- `<type>(<scope>): <summary>`
+- If scope is not clear, use `<type>: <summary>`
+- Keep summary in imperative mood and user-facing where possible
+- Do not include trailing period in the summary line
+
+Allowed `type` values:
+
+- `feat` for new user-facing behavior
+- `fix` for bug fixes
+- `refactor` for internal structural changes without behavior change
+- `perf` for performance improvements
+- `update` for non-feature updates that still change behavior/config/docs
+- `remove` for removals/deprecations
+
+Scope guidance:
+
+- Use concrete module scopes when possible: `dashboard`, `sensor`, `camera`, `binary_sensor`, `switch`, `config_flow`, `registry`, `mqtt`, `blueprints`, `release`, `docs`
+
+Examples:
+
+- `feat(dashboard): add person filter chips`
+- `fix(camera): handle empty MQTT snapshot payload`
+- `refactor(registry): simplify person listener lifecycle`
+- `update(docs): clarify dashboard regeneration behavior`
+- `remove(legacy): drop obsolete persons yaml migration notes`
+
 ## Security and Privacy
 
 - **Never log sensitive data**: Person names, camera URLs, or snapshot data should not appear in logs

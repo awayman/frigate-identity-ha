@@ -36,10 +36,41 @@ jobs:
           cd custom_components
           zip -r ../frigate_identity.zip frigate_identity/
 
+      - name: Build release notes from CHANGELOG
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          tag_version = os.environ.get("GITHUB_REF_NAME", "").removeprefix("v")
+          if not tag_version:
+              sys.exit("Missing GITHUB_REF_NAME")
+
+          changelog_path = Path("CHANGELOG.md")
+          text = changelog_path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              rf"^## \[{re.escape(tag_version)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
+              flags=re.MULTILINE | re.DOTALL,
+          )
+          match = pattern.search(text)
+          if not match:
+              sys.exit(f"Could not find CHANGELOG section for version {tag_version}")
+
+          body = match.group(1).strip()
+          if not body:
+              body = "- No notable changes documented."
+
+          release_notes = Path("release_notes.md")
+          release_notes.write_text(body + "\n", encoding="utf-8")
+          print(f"Wrote release notes for v{tag_version} to {release_notes}")
+          PY
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release_notes.md
           files: frigate_identity.zip
           draft: false
           prerelease: false
