@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.22] - 2026-03-17
+
+### Changed
+- Add brand icon image for Frigate Identity Service
+- Add dashboard person filtering and related configuration options
+- Add script to check for broken local Markdown links
+- Remove persons.yaml configuration file for Frigate Identity Service, eliminating role definitions, age requirements, and zone safety settings.
+
 ## [0.5.21] - 2026-03-07
 
 ### Changed
