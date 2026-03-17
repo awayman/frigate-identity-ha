@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+
+## [0.5.23] - 2026-03-17
+
+### Added
+- release: automate release notes generation from CHANGELOG docs(copilot): add commit message convention guidelines
 ## [0.5.22] - 2026-03-17
 
 ### Changed
