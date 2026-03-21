@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.26] - 2026-03-21
+
+### Changed
+- person_registry: optimize listener notification logic and event firing
 ## [0.5.25] - 2026-03-21
 
 ### Added
