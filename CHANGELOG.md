@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.27] - 2026-03-21
+
+### Added
+- camera, sensor: enhance MQTT topic handling and add snapshot debug sensor
 ## [0.5.26] - 2026-03-21
 
 ### Changed
