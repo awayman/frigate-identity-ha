@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.25] - 2026-03-21
+
+### Added
+- camera: add async_update_token call on snapshot reception
 ## [0.5.24] - 2026-03-21
 
 ### Changed
