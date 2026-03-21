@@ -90,25 +90,51 @@ class FrigateIdentityLastPersonSensor(SensorEntity):
         self._attr_extra_state_attributes: dict[str, Any] = {}
         self._prefix = prefix
         self._registry = registry
-        self._unsub: Any = None
+        self._unsubs: list[Any] = []
+
+    @staticmethod
+    def _extract_person(payload: dict[str, Any], topic: str | None = None) -> str | None:
+        """Extract person name from payload, then topic fallback."""
+        person = (
+            payload.get("person_id")
+            or payload.get("person")
+            or payload.get("name")
+        )
+        if person:
+            return str(person)
+
+        if topic and "/snapshots/" in topic and topic.endswith("/metadata"):
+            try:
+                suffix = topic.split("/snapshots/", 1)[1]
+            except IndexError:
+                return None
+            if suffix.endswith("/metadata"):
+                return suffix[: -len("/metadata")]
+
+        return None
+
+    @staticmethod
+    def _normalize_snapshot_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+        """Map snapshot metadata fields to person payload schema."""
+        normalized = dict(payload)
+        if "frigate_zones" not in normalized and isinstance(payload.get("zones"), list):
+            normalized["frigate_zones"] = payload["zones"]
+        return normalized
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to identity MQTT topics."""
-        topic = TOPIC_PERSON_WILDCARD.format(prefix=self._prefix)
+        person_topic = TOPIC_PERSON_WILDCARD.format(prefix=self._prefix)
+        snapshots_topic = TOPIC_SNAPSHOTS_WILDCARD.format(prefix=self._prefix)
 
         @callback
-        def _mqtt_message(msg: Any) -> None:
+        def _mqtt_person_message(msg: Any) -> None:
             try:
                 payload = json.loads(msg.payload)
             except Exception:  # noqa: BLE001
                 _LOGGER.debug("Failed to parse MQTT payload on %s", msg.topic)
                 return
 
-            person = (
-                payload.get("person_id")
-                or payload.get("person")
-                or payload.get("name")
-            )
+            person = self._extract_person(payload)
             if not person:
                 return
 
@@ -132,14 +158,58 @@ class FrigateIdentityLastPersonSensor(SensorEntity):
                 ]
             self.async_write_ha_state()
 
-        self._unsub = await mqtt.async_subscribe(
-            self.hass, topic, _mqtt_message
+        @callback
+        def _mqtt_snapshot_metadata_message(msg: Any) -> None:
+            if not msg.topic.startswith(f"{self._prefix}/snapshots/") or not msg.topic.endswith("/metadata"):
+                return
+
+            try:
+                payload = json.loads(msg.payload)
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Failed to parse snapshot metadata payload on %s", msg.topic)
+                return
+
+            person = self._extract_person(payload, msg.topic)
+            if not person:
+                return
+
+            normalized_payload = self._normalize_snapshot_metadata(payload)
+            self._registry.async_update_person(person, normalized_payload)
+
+            self._attr_native_value = person
+            self._attr_extra_state_attributes = {
+                "confidence": normalized_payload.get("confidence"),
+                "camera": normalized_payload.get("camera")
+                or normalized_payload.get("checkpoint"),
+                "timestamp": normalized_payload.get("timestamp"),
+                "source": normalized_payload.get("source")
+                or "snapshot_metadata",
+                "frigate_zones": normalized_payload.get("frigate_zones", []),
+                "event_id": normalized_payload.get("event_id"),
+                "snapshot_url": normalized_payload.get("snapshot_url"),
+                "last_updated": datetime.now().isoformat(),
+            }
+            if normalized_payload.get("similarity_score") is not None:
+                self._attr_extra_state_attributes["similarity_score"] = normalized_payload[
+                    "similarity_score"
+                ]
+            self.async_write_ha_state()
+
+        self._unsubs.append(
+            await mqtt.async_subscribe(self.hass, person_topic, _mqtt_person_message)
+        )
+        self._unsubs.append(
+            await mqtt.async_subscribe(
+                self.hass, snapshots_topic, _mqtt_snapshot_metadata_message
+            )
         )
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe from MQTT."""
-        if callable(self._unsub):
-            self._unsub()
+        for unsub in self._unsubs:
+            if callable(unsub):
+                unsub()
+        self._unsubs = []
 
 
 class FrigateIdentityAllPersonsSensor(SensorEntity):
