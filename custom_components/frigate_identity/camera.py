@@ -102,6 +102,7 @@ class FrigateIdentityCamera(Camera):
         def _message_received(msg: Any) -> None:
             """Handle incoming snapshot."""
             self._image = msg.payload
+            self.async_update_token()
             self.async_write_ha_state()
 
         self._unsub = await mqtt.async_subscribe(
