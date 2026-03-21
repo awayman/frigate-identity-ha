@@ -154,8 +154,17 @@ The integration registers these Home Assistant services:
 | `frigate_identity.regenerate_dashboard` | Force dashboard regeneration immediately |
 | `frigate_identity.get_registry_status` | Log current person registry state for troubleshooting |
 | `frigate_identity.set_debug_mode` | Publish debug on/off command to Frigate Identity Service |
+| `frigate_identity.clear_embeddings` | Request full embedding-store clear in Frigate Identity Service |
 | `frigate_identity.update_person_profile` | Set child/adult status and safe zones for a person |
 | `frigate_identity.update_child_safe_zones` | Backward-compatible alias for safe-zones-only updates |
+```
+
+Example service call from Developer Tools:
+
+```yaml
+service: frigate_identity.clear_embeddings
+data:
+  reason: manual reset from HA Developer Tools
 ```
 
 ## Snapshot Sources

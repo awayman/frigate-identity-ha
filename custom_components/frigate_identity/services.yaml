@@ -15,6 +15,17 @@ set_debug_mode:
       selector:
         boolean:
 
+clear_embeddings:
+  name: Clear embeddings
+  description: Clear all learned person embeddings in the Frigate Identity Service.
+  fields:
+    reason:
+      name: Reason
+      description: Optional note recorded by the service logs when clearing embeddings.
+      required: false
+      selector:
+        text:
+
 update_person_profile:
   name: Update person profile
   description: Mark a person as child/adult and set safe zones where a child can be unsupervised.

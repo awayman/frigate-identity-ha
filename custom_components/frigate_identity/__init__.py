@@ -194,6 +194,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ),
     )
 
+    # ── Service: clear_embeddings ──────────────────────────────────────
+    async def _handle_clear_embeddings(call: ServiceCall) -> None:
+        """Request a full embedding-store clear in the identity service."""
+        import json
+
+        reason = call.data.get("reason", "")
+
+        try:
+            payload = json.dumps({"confirm": True, "reason": reason})
+            await mqtt_component.async_publish(
+                hass,
+                "frigate_identity/embeddings/clear",
+                payload,
+                qos=0,
+                retain=False,
+            )
+            _LOGGER.warning(
+                "Published embedding clear command to service (reason=%s)",
+                reason or "not provided",
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to publish embedding clear command: %s", e)
+
+    hass.services.async_register(
+        DOMAIN,
+        "clear_embeddings",
+        _handle_clear_embeddings,
+        schema=vol.Schema(
+            {vol.Optional("reason", default=""): vol.Coerce(str)}
+        ),
+    )
+
     # ── Service: update_person_profile ──────────────────────────────────
     async def _apply_person_profile(
         person_name: str | None,
@@ -293,6 +325,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
         hass.services.async_remove(DOMAIN, "get_registry_status")
         hass.services.async_remove(DOMAIN, "set_debug_mode")
+        hass.services.async_remove(DOMAIN, "clear_embeddings")
         hass.services.async_remove(DOMAIN, "update_person_profile")
         hass.services.async_remove(DOMAIN, "update_child_safe_zones")
     return unload_ok
