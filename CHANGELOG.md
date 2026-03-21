@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.29] - 2026-03-21
+
+### Added
+- service: add clear_embeddings service to reset learned person embeddings
 ## [0.5.28] - 2026-03-21
 
 ### Added
