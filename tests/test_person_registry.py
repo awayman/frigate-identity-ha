@@ -160,7 +160,7 @@ class PersonRegistryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registry.get_person("Alice").camera, "driveway")
         self.assertEqual(
             [event_name for event_name, _ in hass.bus.events],
-            [CONST.EVENT_PERSONS_UPDATED, CONST.EVENT_PERSONS_UPDATED],
+            [CONST.EVENT_PERSONS_UPDATED],
         )
         self.assertEqual(
             hass.data[CONST.DOMAIN][CONST.DATA_PERSONS]["Alice"].camera,

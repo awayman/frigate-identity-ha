@@ -263,18 +263,22 @@ class PersonRegistry:
             for zone in zones:
                 self._discovered_zones.add(zone)
 
-        self.hass.async_create_task(self._async_notify_listeners())
+        # Always notify listeners so dynamic entities can refresh state.
+        # Only fire the dashboard/person-list changed event for newly
+        # discovered persons to avoid frequent Lovelace refresh prompts.
+        self.hass.async_create_task(self._async_notify_listeners(fire_event=is_new))
 
-    async def _async_notify_listeners(self) -> None:
+    async def _async_notify_listeners(self, *, fire_event: bool = True) -> None:
         """Notify all listeners that the person list changed."""
         # Store in hass.data for easy access by other components
         self.hass.data.setdefault(DOMAIN, {})[DATA_PERSONS] = self._persons
         self.hass.data[DOMAIN][DATA_PERSONS_META] = self._meta
         self.hass.data[DOMAIN][DATA_CAMERA_ZONES] = self._camera_zones
 
-        self.hass.bus.async_fire(EVENT_PERSONS_UPDATED, {
-            "persons": list(self._persons.keys()),
-        })
+        if fire_event:
+            self.hass.bus.async_fire(EVENT_PERSONS_UPDATED, {
+                "persons": list(self._persons.keys()),
+            })
 
         for listener in self._listeners:
             try:
