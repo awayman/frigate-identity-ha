@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.30] - 2026-03-21
+
+### Added
+- sensor: enhance MQTT handling with snapshot metadata extraction and normalization
 ## [0.5.29] - 2026-03-21
 
 ### Added
