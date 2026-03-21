@@ -6,6 +6,7 @@ identity/snapshots/{person_name} for cropped snapshot images.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components import mqtt
@@ -94,6 +95,13 @@ class FrigateIdentityCamera(Camera):
             person_name.lower(),
             normalized,
         }
+        self._attr_extra_state_attributes = {
+            "last_snapshot_topic": None,
+            "last_snapshot_received": None,
+            "last_snapshot_bytes": 0,
+            "matched_topic_person": None,
+            "topic_aliases": sorted(self._topic_aliases),
+        }
         self._unsub: Any = None
 
     def _topic_matches_person(self, topic: str) -> bool:
@@ -131,6 +139,14 @@ class FrigateIdentityCamera(Camera):
             if not self._topic_matches_person(msg.topic):
                 return
             self._image = msg.payload
+            topic_person = msg.topic[len(f"{self._topic_prefix}/snapshots/") :]
+            self._attr_extra_state_attributes = {
+                "last_snapshot_topic": msg.topic,
+                "last_snapshot_received": datetime.now().isoformat(),
+                "last_snapshot_bytes": len(msg.payload or b""),
+                "matched_topic_person": topic_person,
+                "topic_aliases": sorted(self._topic_aliases),
+            }
             self.async_update_token()
             self.async_write_ha_state()
 

@@ -151,6 +151,22 @@ class CameraTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entity._image, b"jpeg-bytes")
         self.assertEqual(entity._token_updates, 1)
         self.assertEqual(entity._write_count, 1)
+        self.assertEqual(
+            entity._attr_extra_state_attributes["last_snapshot_topic"],
+            "identity/snapshots/alice",
+        )
+        self.assertEqual(
+            entity._attr_extra_state_attributes["matched_topic_person"],
+            "alice",
+        )
+        self.assertEqual(
+            entity._attr_extra_state_attributes["last_snapshot_bytes"],
+            len(b"jpeg-bytes"),
+        )
+        self.assertIn(
+            "alice",
+            entity._attr_extra_state_attributes["topic_aliases"],
+        )
 
     async def test_metadata_topic_is_ignored(self) -> None:
         """Metadata MQTT topics should not overwrite the image payload."""

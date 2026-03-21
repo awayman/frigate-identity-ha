@@ -256,7 +256,7 @@ def main() -> None:
             print("     No commits since last tag (changelog section will be empty)")
         print(f"  3. git commit -m 'Release v{new_version}'")
         print(f"  4. git tag v{new_version}")
-        print(f"  5. git push origin main --tags")
+        print("  5. git push origin main --tags")
         return
 
     check_clean_working_tree()
@@ -277,7 +277,7 @@ def main() -> None:
 
     if args.no_push:
         print("\n--no-push specified. To push later:")
-        print(f"  git push origin main --tags")
+        print("  git push origin main --tags")
     else:
         run(["git", "push", "origin", "main", "--tags"])
         print(f"  Pushed to origin/main with tag v{new_version}")
