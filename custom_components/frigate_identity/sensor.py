@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_MQTT_TOPIC_PREFIX,
     DOMAIN,
     TOPIC_PERSON_WILDCARD,
+    TOPIC_SNAPSHOTS_WILDCARD,
 )
 from .person_registry import PersonData, PersonRegistry
 
@@ -46,7 +47,8 @@ async def async_setup_entry(
     # ── Global sensors (always present) ─────────────────────────────────
     last_person = FrigateIdentityLastPersonSensor(prefix, registry)
     all_persons = FrigateIdentityAllPersonsSensor(prefix, registry)
-    async_add_entities([last_person, all_persons])
+    snapshot_debug = FrigateIdentitySnapshotDebugSensor(prefix)
+    async_add_entities([last_person, all_persons, snapshot_debug])
 
     # ── Dynamic per-person location sensors ─────────────────────────────
     tracked: dict[str, FrigateIdentityPersonLocationSensor] = {}
@@ -186,6 +188,76 @@ class FrigateIdentityAllPersonsSensor(SensorEntity):
 
         self._unsub = await mqtt.async_subscribe(
             self.hass, topic, _mqtt_message
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unsubscribe from MQTT."""
+        if callable(self._unsub):
+            self._unsub()
+
+
+class FrigateIdentitySnapshotDebugSensor(SensorEntity):
+    """Tracks incoming snapshot MQTT activity for troubleshooting."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, prefix: str) -> None:
+        """Initialise the sensor."""
+        self._attr_name = "Frigate Identity - Snapshot Debug"
+        self._attr_unique_id = "frigate_identity_snapshot_debug"
+        self._attr_native_value: int = 0
+        self._attr_extra_state_attributes: dict[str, Any] = {
+            "last_snapshot_topic": None,
+            "last_snapshot_person": None,
+            "last_snapshot_received": None,
+            "last_snapshot_bytes": 0,
+            "snapshot_messages": 0,
+            "metadata_messages": 0,
+            "last_metadata_topic": None,
+            "last_metadata_received": None,
+        }
+        self._prefix = prefix
+        self._topic_root = f"{prefix}/snapshots/"
+        self._unsub: Any = None
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to snapshot MQTT topics."""
+        topic = TOPIC_SNAPSHOTS_WILDCARD.format(prefix=self._prefix)
+
+        @callback
+        def _mqtt_message(msg: Any) -> None:
+            if not msg.topic.startswith(self._topic_root):
+                return
+
+            suffix = msg.topic[len(self._topic_root) :]
+            now_iso = datetime.now().isoformat()
+
+            if suffix.endswith("/metadata"):
+                self._attr_extra_state_attributes["metadata_messages"] += 1
+                self._attr_extra_state_attributes["last_metadata_topic"] = msg.topic
+                self._attr_extra_state_attributes["last_metadata_received"] = now_iso
+                self.async_write_ha_state()
+                return
+
+            if "/" in suffix:
+                return
+
+            payload_bytes = len(msg.payload or b"")
+            self._attr_native_value += 1
+            self._attr_extra_state_attributes["snapshot_messages"] = (
+                self._attr_native_value
+            )
+            self._attr_extra_state_attributes["last_snapshot_topic"] = msg.topic
+            self._attr_extra_state_attributes["last_snapshot_person"] = suffix
+            self._attr_extra_state_attributes["last_snapshot_received"] = now_iso
+            self._attr_extra_state_attributes["last_snapshot_bytes"] = payload_bytes
+            self.async_write_ha_state()
+
+        self._unsub = await mqtt.async_subscribe(
+            self.hass,
+            topic,
+            _mqtt_message,
+            encoding=None,
         )
 
     async def async_will_remove_from_hass(self) -> None:

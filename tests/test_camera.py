@@ -139,13 +139,39 @@ class CameraTests(unittest.IsolatedAsyncioTestCase):
 
         await entity.async_added_to_hass()
 
-        self.assertEqual(SUBSCRIPTIONS["topic"], "identity/snapshots/Alice")
+        self.assertEqual(SUBSCRIPTIONS["topic"], "identity/snapshots/#")
         self.assertIsNone(entity._image)
 
-        msg = types.SimpleNamespace(payload=b"jpeg-bytes")
+        msg = types.SimpleNamespace(
+            topic="identity/snapshots/alice",
+            payload=b"jpeg-bytes",
+        )
         SUBSCRIPTIONS["callback"](msg)
 
         self.assertEqual(entity._image, b"jpeg-bytes")
+        self.assertEqual(entity._token_updates, 1)
+        self.assertEqual(entity._write_count, 1)
+
+    async def test_metadata_topic_is_ignored(self) -> None:
+        """Metadata MQTT topics should not overwrite the image payload."""
+        entity = FrigateIdentityCamera("Alice", "identity")
+        entity.hass = object()
+
+        await entity.async_added_to_hass()
+
+        snapshot_msg = types.SimpleNamespace(
+            topic="identity/snapshots/Alice",
+            payload=b"jpeg-1",
+        )
+        SUBSCRIPTIONS["callback"](snapshot_msg)
+
+        metadata_msg = types.SimpleNamespace(
+            topic="identity/snapshots/Alice/metadata",
+            payload=b"{\"camera\":\"front_door\"}",
+        )
+        SUBSCRIPTIONS["callback"](metadata_msg)
+
+        self.assertEqual(entity._image, b"jpeg-1")
         self.assertEqual(entity._token_updates, 1)
         self.assertEqual(entity._write_count, 1)
 

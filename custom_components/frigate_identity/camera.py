@@ -20,11 +20,16 @@ from .const import (
     DEFAULT_MQTT_TOPIC_PREFIX,
     DOMAIN,
     SNAPSHOT_SOURCE_MQTT,
-    TOPIC_SNAPSHOTS,
+    TOPIC_SNAPSHOTS_WILDCARD,
 )
 from .person_registry import PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _slug(name: str) -> str:
+    """Return a lowercase underscore-separated topic slug."""
+    return name.lower().replace(" ", "_").replace("-", "_")
 
 
 async def async_setup_entry(
@@ -81,8 +86,30 @@ class FrigateIdentityCamera(Camera):
         self._attr_name = f"{person_name} Snapshot"
         self._attr_unique_id = f"frigate_identity_{slug}_snapshot"
         self._image: bytes | None = None
-        self._topic = TOPIC_SNAPSHOTS.format(prefix=topic_prefix, name=person_name)
+        self._topic_prefix = topic_prefix
+        self._topic_wildcard = TOPIC_SNAPSHOTS_WILDCARD.format(prefix=topic_prefix)
+        normalized = _slug(person_name)
+        self._topic_aliases = {
+            person_name,
+            person_name.lower(),
+            normalized,
+        }
         self._unsub: Any = None
+
+    def _topic_matches_person(self, topic: str) -> bool:
+        """Return True when a snapshot topic belongs to this person."""
+        topic_root = f"{self._topic_prefix}/snapshots/"
+        if not topic.startswith(topic_root):
+            return False
+
+        # Match only direct snapshot topics and ignore metadata suffix topics.
+        topic_person = topic[len(topic_root) :]
+        if not topic_person or "/" in topic_person:
+            return False
+
+        return topic_person in self._topic_aliases or _slug(topic_person) == _slug(
+            self._person_name
+        )
 
     @property
     def is_streaming(self) -> bool:
@@ -101,12 +128,14 @@ class FrigateIdentityCamera(Camera):
         @callback
         def _message_received(msg: Any) -> None:
             """Handle incoming snapshot."""
+            if not self._topic_matches_person(msg.topic):
+                return
             self._image = msg.payload
             self.async_update_token()
             self.async_write_ha_state()
 
         self._unsub = await mqtt.async_subscribe(
-            self.hass, self._topic, _message_received, encoding=None
+            self.hass, self._topic_wildcard, _message_received, encoding=None
         )
 
     async def async_will_remove_from_hass(self) -> None:
