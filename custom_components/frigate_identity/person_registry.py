@@ -263,8 +263,7 @@ class PersonRegistry:
             for zone in zones:
                 self._discovered_zones.add(zone)
 
-        if is_new:
-            self.hass.async_create_task(self._async_notify_listeners())
+        self.hass.async_create_task(self._async_notify_listeners())
 
     async def _async_notify_listeners(self) -> None:
         """Notify all listeners that the person list changed."""
