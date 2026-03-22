@@ -195,6 +195,26 @@ def _build_view(
     area_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a complete Lovelace view dict."""
+    service_status_entity = _resolve_entity_id(
+        hass,
+        domain="binary_sensor",
+        unique_id="frigate_identity_service_status",
+        candidates=["binary_sensor.frigate_identity_service_status"],
+    )
+    banner_card: dict[str, Any] = {
+        "type": "conditional",
+        "conditions": [
+            {"entity": service_status_entity, "state_not": "on"},
+        ],
+        "card": {
+            "type": "markdown",
+            "content": (
+                "## Identity Service Offline\n"
+                "No recent heartbeat was received from the identity service. "
+                "Displayed person data may be stale until the service reconnects."
+            ),
+        },
+    }
     header_card: dict[str, Any] = {
         "type": "markdown",
         "content": (
@@ -206,6 +226,7 @@ def _build_view(
         "type": "entities",
         "title": "System Status",
         "entities": [
+            {"entity": service_status_entity, "name": "Identity Service"},
             {"entity": "sensor.frigate_identity_all_persons", "name": "Persons Currently Tracked"},
             {"entity": "sensor.frigate_identity_last_person", "name": "Last Detection"},
         ],
@@ -249,7 +270,7 @@ def _build_view(
         "title": dashboard_name,
         "path": "frigate-identity",
         "icon": "mdi:account-search",
-        "cards": [header_card, *body_cards, summary_card],
+        "cards": [banner_card, header_card, *body_cards, summary_card],
     }
 
 

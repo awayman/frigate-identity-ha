@@ -10,6 +10,7 @@ CONF_AUTO_DASHBOARD = "auto_dashboard"
 CONF_DASHBOARD_REFRESH_TIME = "dashboard_refresh_time"
 CONF_DASHBOARD_NAME = "dashboard_name"
 CONF_DASHBOARD_PERSONS = "dashboard_persons"
+CONF_SERVICE_HEALTH_CHECK_INTERVAL = "service_health_check_interval"
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 DEFAULT_MQTT_TOPIC_PREFIX = "identity"
@@ -18,6 +19,7 @@ DEFAULT_AUTO_DASHBOARD = True
 DEFAULT_DASHBOARD_REFRESH_TIME = "03:00"
 DEFAULT_DASHBOARD_NAME = "Kids"
 DEFAULT_DASHBOARD_PERSONS = []
+DEFAULT_SERVICE_HEALTH_CHECK_INTERVAL = 15
 
 # ── Person entity custom attributes ──────────────────────────────────────────
 ATTR_FRIGATE_IDENTITY_IS_CHILD = "frigate_identity_is_child"
@@ -48,3 +50,7 @@ TOPIC_PERSON = "{prefix}/person/{name}"
 TOPIC_PERSON_WILDCARD = "{prefix}/person/#"
 TOPIC_SNAPSHOTS = "{prefix}/snapshots/{name}"
 TOPIC_SNAPSHOTS_WILDCARD = "{prefix}/snapshots/#"
+TOPIC_HEARTBEAT = "{prefix}/health"
+
+SERVICE_HEARTBEAT_INTERVAL_SECONDS = 30
+SERVICE_HEARTBEAT_STALE_THRESHOLD_SECONDS = 90

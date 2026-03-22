@@ -21,6 +21,7 @@ from .const import (
     DATA_PERSONS_META,
     DOMAIN,
     EVENT_PERSONS_UPDATED,
+    SERVICE_HEARTBEAT_STALE_THRESHOLD_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ class PersonRegistry:
         self._camera_zones: dict[str, str] = {}
         self._listeners: list[callback] = []
         self._discovered_zones: set[str] = set()  # Track all zones from Frigate MQTT
+        self._last_heartbeat_timestamp: datetime | None = None
 
     @property
     def persons(self) -> dict[str, PersonData]:
@@ -193,6 +195,34 @@ class PersonRegistry:
                 self._listeners.remove(listener)
 
         return _unregister
+
+    def get_service_health(self) -> dict[str, Any]:
+        """Return current identity service health based on heartbeat age."""
+        if self._last_heartbeat_timestamp is None:
+            return {
+                "status": "initializing",
+                "last_heartbeat_age_seconds": None,
+                "is_connected": False,
+                "last_heartbeat_timestamp": None,
+            }
+
+        age_seconds = int(
+            (datetime.now() - self._last_heartbeat_timestamp).total_seconds()
+        )
+        is_connected = age_seconds < SERVICE_HEARTBEAT_STALE_THRESHOLD_SECONDS
+
+        return {
+            "status": "running" if is_connected else "stale",
+            "last_heartbeat_age_seconds": age_seconds,
+            "is_connected": is_connected,
+            "last_heartbeat_timestamp": self._last_heartbeat_timestamp.isoformat(),
+        }
+
+    @callback
+    def async_update_heartbeat(self) -> None:
+        """Record a heartbeat from the identity service."""
+        self._last_heartbeat_timestamp = datetime.now()
+        self.hass.async_create_task(self._async_notify_listeners(fire_event=False))
 
     async def async_load_persons_from_ha(self) -> None:
         """Load person metadata from HA person entity registry."""

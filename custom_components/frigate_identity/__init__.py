@@ -5,10 +5,11 @@ with automatic entity creation, blueprint deployment, and dashboard generation.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
-from datetime import time as dt_time
+from datetime import time as dt_time, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -17,17 +18,22 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.event import async_call_later, async_track_time_change
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_call_later, async_track_time_change, async_track_time_interval
 
 from .const import (
     ATTR_FRIGATE_IDENTITY_IS_CHILD,
     ATTR_FRIGATE_IDENTITY_SAFE_ZONES,
     CONF_AUTO_DASHBOARD,
+    CONF_MQTT_TOPIC_PREFIX,
     CONF_DASHBOARD_REFRESH_TIME,
     DEFAULT_AUTO_DASHBOARD,
     DEFAULT_DASHBOARD_REFRESH_TIME,
+    DEFAULT_MQTT_TOPIC_PREFIX,
+    DEFAULT_SERVICE_HEALTH_CHECK_INTERVAL,
     DOMAIN,
     EVENT_PERSONS_UPDATED,
+    TOPIC_HEARTBEAT,
 )
 from .dashboard import async_generate_dashboard
 from .person_registry import PersonData, PersonRegistry
@@ -43,9 +49,48 @@ PLATFORMS = [
     Platform.SWITCH,
 ]
 
+_ADDON_SLUG = "frigate_identity_service"
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up Frigate Identity integration (YAML not used — see config flow)."""
+    return True
+
+
+def _is_supervisor_available() -> bool:
+    """Return True when Home Assistant Supervisor API is available."""
+    return bool(os.environ.get("SUPERVISOR_API") and os.environ.get("SUPERVISOR_TOKEN"))
+
+
+async def _restart_identity_addon(hass: HomeAssistant) -> bool:
+    """Attempt to restart the Frigate Identity Service add-on."""
+    supervisor_api = os.environ.get("SUPERVISOR_API")
+    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+    if not supervisor_api or not supervisor_token:
+        return False
+
+    session = async_get_clientsession(hass)
+    try:
+        async with session.post(
+            f"{supervisor_api}/addons/{_ADDON_SLUG}/restart",
+            headers={"Authorization": f"Bearer {supervisor_token}"},
+            timeout=10,
+        ) as response:
+            if response.status >= 300:
+                _LOGGER.error(
+                    "Supervisor restart request for %s failed with status %s",
+                    _ADDON_SLUG,
+                    response.status,
+                )
+                return False
+    except asyncio.TimeoutError:
+        _LOGGER.error("Timed out restarting add-on %s", _ADDON_SLUG)
+        return False
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception("Failed to restart add-on %s", _ADDON_SLUG)
+        return False
+
+    _LOGGER.warning("Requested restart for add-on %s", _ADDON_SLUG)
     return True
 
 
@@ -66,6 +111,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # ── Forward platforms ───────────────────────────────────────────────
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # ── MQTT heartbeat subscription ─────────────────────────────────────
+    heartbeat_topic = TOPIC_HEARTBEAT.format(
+        prefix=config.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)
+    )
+
+    @callback
+    def _handle_heartbeat_message(_msg: Any) -> None:
+        registry.async_update_heartbeat()
+
+    entry.async_on_unload(
+        await mqtt_component.async_subscribe(
+            hass,
+            heartbeat_topic,
+            _handle_heartbeat_message,
+        )
+    )
+    _LOGGER.info("Subscribed to identity heartbeat topic %s", heartbeat_topic)
 
     # ── Dashboard auto-generation ───────────────────────────────────────
     auto_dashboard = config.get(CONF_AUTO_DASHBOARD, DEFAULT_AUTO_DASHBOARD)
@@ -135,6 +198,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         entry.async_on_unload(
             async_call_later(hass, 15, _initial_regen)
+        )
+
+    # ── Periodic health check / add-on restart ─────────────────────────
+    if _is_supervisor_available():
+        @callback
+        def _health_check(_now: Any) -> None:
+            health = registry.get_service_health()
+            if not health["is_connected"]:
+                hass.async_create_task(_restart_identity_addon(hass))
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                _health_check,
+                timedelta(minutes=DEFAULT_SERVICE_HEALTH_CHECK_INTERVAL),
+            )
         )
 
     # ── Service: regenerate_dashboard ───────────────────────────────────
