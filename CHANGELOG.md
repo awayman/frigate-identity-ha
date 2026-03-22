@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.5.31] - 2026-03-22
+
+### Added
+- service: implement heartbeat monitoring and service status tracking
+- dashboard: display last_seen as relative time (mins:secs ago)
 ## [0.5.30] - 2026-03-21
 
 ### Added
