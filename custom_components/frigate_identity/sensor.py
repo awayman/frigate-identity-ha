@@ -34,6 +34,33 @@ from .person_registry import PersonData, PersonRegistry
 _LOGGER = logging.getLogger(__name__)
 
 
+def _format_last_seen(iso_timestamp: str | None) -> str:
+    """Format an ISO timestamp as relative time (e.g., '2 min 30s ago')."""
+    if not iso_timestamp:
+        return "unknown"
+    
+    try:
+        last_seen_dt = datetime.fromisoformat(iso_timestamp)
+        now = datetime.now()
+        delta = now - last_seen_dt
+        
+        total_seconds = int(delta.total_seconds())
+        if total_seconds < 0:
+            return "now"
+        
+        minutes = total_seconds // 60
+        seconds = total_seconds % 60
+        
+        if minutes == 0:
+            return f"{seconds}s ago"
+        elif minutes == 1:
+            return f"1 min {seconds}s ago"
+        else:
+            return f"{minutes} min {seconds}s ago"
+    except Exception:  # noqa: BLE001
+        return iso_timestamp or "unknown"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -395,7 +422,7 @@ class FrigateIdentityPersonLocationSensor(SensorEntity):
             "confidence": person.confidence or 0,
             "source": person.source or "unknown",
             "snapshot_url": person.snapshot_url or "unavailable",
-            "last_seen": person.last_seen or "unknown",
+            "last_seen": _format_last_seen(person.last_seen),
             "event_history": person.event_history,
             "is_child": person.is_child,
             "safe_zones": person.safe_zones,
