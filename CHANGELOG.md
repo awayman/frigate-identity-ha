@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- debug: publish disconnected service health diagnostics to `frigate_identity/debug/health`
 
 ### Changed
 
 ### Fixed
+- integration: remove automatic Supervisor add-on restart; emit disconnect diagnostics instead
 
 ### Removed
 
