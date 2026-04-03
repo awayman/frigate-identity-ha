@@ -5,11 +5,11 @@ with automatic entity creation, blueprint deployment, and dashboard generation.
 """
 from __future__ import annotations
 
-import asyncio
+import json
 import logging
 import os
 import shutil
-from datetime import time as dt_time, timedelta
+from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Any
 
 import voluptuous as vol
@@ -18,7 +18,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change, async_track_time_interval
 
 from .const import (
@@ -49,48 +48,9 @@ PLATFORMS = [
     Platform.SWITCH,
 ]
 
-_ADDON_SLUG = "frigate_identity_service"
-
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up Frigate Identity integration (YAML not used — see config flow)."""
-    return True
-
-
-def _is_supervisor_available() -> bool:
-    """Return True when Home Assistant Supervisor API is available."""
-    return bool(os.environ.get("SUPERVISOR_API") and os.environ.get("SUPERVISOR_TOKEN"))
-
-
-async def _restart_identity_addon(hass: HomeAssistant) -> bool:
-    """Attempt to restart the Frigate Identity Service add-on."""
-    supervisor_api = os.environ.get("SUPERVISOR_API")
-    supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
-    if not supervisor_api or not supervisor_token:
-        return False
-
-    session = async_get_clientsession(hass)
-    try:
-        async with session.post(
-            f"{supervisor_api}/addons/{_ADDON_SLUG}/restart",
-            headers={"Authorization": f"Bearer {supervisor_token}"},
-            timeout=10,
-        ) as response:
-            if response.status >= 300:
-                _LOGGER.error(
-                    "Supervisor restart request for %s failed with status %s",
-                    _ADDON_SLUG,
-                    response.status,
-                )
-                return False
-    except asyncio.TimeoutError:
-        _LOGGER.error("Timed out restarting add-on %s", _ADDON_SLUG)
-        return False
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception("Failed to restart add-on %s", _ADDON_SLUG)
-        return False
-
-    _LOGGER.warning("Requested restart for add-on %s", _ADDON_SLUG)
     return True
 
 
@@ -200,21 +160,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_call_later(hass, 15, _initial_regen)
         )
 
-    # ── Periodic health check / add-on restart ─────────────────────────
-    if _is_supervisor_available():
-        @callback
-        def _health_check(_now: Any) -> None:
-            health = registry.get_service_health()
-            if not health["is_connected"]:
-                hass.async_create_task(_restart_identity_addon(hass))
+    # ── Periodic health check / diagnostics ────────────────────────────
+    async def _publish_disconnected_diagnostics(health: dict[str, Any]) -> None:
+        """Publish service-disconnected diagnostics for observability."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        heartbeat_age_seconds = health.get("last_heartbeat_age_seconds")
 
-        entry.async_on_unload(
-            async_track_time_interval(
-                hass,
-                _health_check,
-                timedelta(minutes=DEFAULT_SERVICE_HEALTH_CHECK_INTERVAL),
-            )
+        hass.bus.async_fire(
+            "frigate_identity.service_disconnected",
+            {"timestamp": timestamp},
         )
+
+        payload = json.dumps(
+            {
+                "timestamp": timestamp,
+                "health": health,
+                "heartbeat_age_seconds": heartbeat_age_seconds,
+            },
+            separators=(",", ":"),
+        )
+
+        await mqtt_component.async_publish(
+            hass,
+            "frigate_identity/debug/health",
+            payload,
+            qos=0,
+            retain=False,
+        )
+
+    @callback
+    def _health_check(_now: Any) -> None:
+        try:
+            health = registry.get_service_health()
+            _LOGGER.debug("Service health check: %s", health)
+            if health.get("is_connected", False):
+                return
+
+            _LOGGER.warning(
+                "Service disconnected — restart suppressed (hotfix/remove-addon-restart)"
+            )
+            hass.async_create_task(_publish_disconnected_diagnostics(health))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Unexpected error while processing service health check")
+
+    entry.async_on_unload(
+        async_track_time_interval(
+            hass,
+            _health_check,
+            timedelta(minutes=DEFAULT_SERVICE_HEALTH_CHECK_INTERVAL),
+        )
+    )
 
     # ── Service: regenerate_dashboard ───────────────────────────────────
     async def _handle_regen_service(call: ServiceCall) -> None:
@@ -248,7 +243,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Service: set_debug_mode ─────────────────────────────────────────
     async def _handle_set_debug_mode(call: ServiceCall) -> None:
         """Set debug mode for the frigate identity service."""
-        import json
         enabled = call.data.get("enabled", False)
 
         try:
@@ -276,8 +270,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Service: clear_embeddings ──────────────────────────────────────
     async def _handle_clear_embeddings(call: ServiceCall) -> None:
         """Request a full embedding-store clear in the identity service."""
-        import json
-
         reason = call.data.get("reason", "")
 
         try:
