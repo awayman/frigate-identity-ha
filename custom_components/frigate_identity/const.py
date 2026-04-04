@@ -51,6 +51,8 @@ TOPIC_PERSON_WILDCARD = "{prefix}/person/#"
 TOPIC_SNAPSHOTS = "{prefix}/snapshots/{name}"
 TOPIC_SNAPSHOTS_WILDCARD = "{prefix}/snapshots/#"
 TOPIC_HEARTBEAT = "{prefix}/health"
+TOPIC_FALSE_POSITIVE = "frigate_identity/feedback/false_positive"
+TOPIC_FALSE_POSITIVE_ACK = "frigate_identity/feedback/false_positive_ack"
 
 SERVICE_HEARTBEAT_INTERVAL_SECONDS = 30
 SERVICE_HEARTBEAT_STALE_THRESHOLD_SECONDS = 90

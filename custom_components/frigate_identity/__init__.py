@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from datetime import datetime, time as dt_time, timedelta, timezone
 from typing import Any
 
@@ -33,6 +34,8 @@ from .const import (
     DOMAIN,
     EVENT_PERSONS_UPDATED,
     TOPIC_HEARTBEAT,
+    TOPIC_FALSE_POSITIVE,
+    TOPIC_FALSE_POSITIVE_ACK,
 )
 from .dashboard import async_generate_dashboard
 from .person_registry import PersonData, PersonRegistry
@@ -381,6 +384,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ),
     )
 
+    # ── Service: report_false_positive ─────────────────────────────────
+    async def _handle_report_false_positive(call: ServiceCall) -> None:
+        """Publish a false-positive feedback message to the identity service."""
+        await _async_submit_false_positive(hass, registry, call.data["person_id"])
+
+    hass.services.async_register(
+        DOMAIN,
+        "report_false_positive",
+        _handle_report_false_positive,
+        schema=vol.Schema({vol.Required("person_id"): str}),
+    )
+
+    # Subscribe to ACK topic and surface result to operator as a notification
+    @callback
+    def _handle_false_positive_ack(msg: Any) -> None:
+        """Handle ACK from the identity service after processing a false positive."""
+        try:
+            ack = json.loads(msg.payload)
+        except (json.JSONDecodeError, AttributeError):
+            _LOGGER.warning("Received invalid false-positive ACK payload")
+            return
+
+        notif_title, notif_msg, notif_id = _false_positive_notification_from_ack(ack)
+
+        hass.async_create_task(
+            _notify_operator(hass, title=notif_title, message=notif_msg, notification_id=notif_id)
+        )
+
+    entry.async_on_unload(
+        await mqtt_component.async_subscribe(
+            hass,
+            TOPIC_FALSE_POSITIVE_ACK,
+            _handle_false_positive_ack,
+        )
+    )
+    _LOGGER.info("Subscribed to false-positive ACK topic %s", TOPIC_FALSE_POSITIVE_ACK)
+
     # ── Reload listener ─────────────────────────────────────────────────
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -399,12 +439,110 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, "clear_embeddings")
         hass.services.async_remove(DOMAIN, "update_person_profile")
         hass.services.async_remove(DOMAIN, "update_child_safe_zones")
+        hass.services.async_remove(DOMAIN, "report_false_positive")
     return unload_ok
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _build_false_positive_payload(
+    registry: PersonRegistry,
+    person_id: str,
+    submitted_at_ms: int,
+) -> str:
+    """Build the outgoing MQTT payload for a false-positive report."""
+    person = registry.get_person(person_id)
+    event_id: str | None = None
+    camera: str | None = None
+    if person is not None:
+        event_id = person.event_id
+        camera = person.camera
+
+    return json.dumps(
+        {
+            "person_id": person_id,
+            "event_id": event_id,
+            "camera": camera,
+            "submitted_at": submitted_at_ms,
+        }
+    )
+
+
+async def _async_submit_false_positive(
+    hass: HomeAssistant,
+    registry: PersonRegistry,
+    person_id: str,
+) -> None:
+    """Submit false-positive feedback to the identity service via MQTT."""
+    payload = _build_false_positive_payload(
+        registry,
+        person_id,
+        int(time.time() * 1000),
+    )
+    try:
+        await mqtt_component.async_publish(
+            hass,
+            TOPIC_FALSE_POSITIVE,
+            payload,
+            qos=1,
+            retain=False,
+        )
+        _LOGGER.info("Published false-positive feedback for %s", person_id)
+    except Exception as exc:
+        _LOGGER.error(
+            "Failed to publish false-positive feedback for %s: %s",
+            person_id,
+            exc,
+        )
+        await _notify_operator(
+            hass,
+            title="False Positive: Submission Failed",
+            message=f"Could not submit false positive for {person_id}. Check MQTT connectivity.",
+            notification_id=f"fp_error_{person_id}",
+        )
+
+
+def _false_positive_notification_from_ack(ack: dict[str, Any]) -> tuple[str, str, str]:
+    """Return (title, message, notification_id) for an ACK payload."""
+    person_id = ack.get("person_id", "unknown")
+    status = ack.get("status", "unknown")
+    message = ack.get("message", "")
+    removed = ack.get("embeddings_removed", 0)
+
+    if status == "ok":
+        return (
+            f"False Positive Reported: {person_id}",
+            message or f"Removed {removed} embedding(s) for {person_id}.",
+            f"fp_ok_{person_id}",
+        )
+
+    return (
+        f"False Positive Failed: {person_id}",
+        message or f"Service could not process the false positive for {person_id}.",
+        f"fp_error_{person_id}",
+    )
+
+
+async def _notify_operator(
+    hass: HomeAssistant,
+    *,
+    title: str,
+    message: str,
+    notification_id: str,
+) -> None:
+    """Create a persistent notification visible to all HA operators."""
+    await hass.services.async_call(
+        "persistent_notification",
+        "create",
+        {
+            "title": title,
+            "message": message,
+            "notification_id": notification_id,
+        },
+    )
 
 
 # ── Blueprint deployment ────────────────────────────────────────────────

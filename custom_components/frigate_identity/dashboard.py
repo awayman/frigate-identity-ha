@@ -34,6 +34,20 @@ def _slug(name: str) -> str:
     return name.lower().replace(" ", "_").replace("-", "_")
 
 
+def _false_positive_button(person: str) -> dict[str, Any]:
+    """Build a 'Report False Positive' button card for a person."""
+    return {
+        "type": "button",
+        "name": "Report False Positive",
+        "icon": "mdi:thumb-down-outline",
+        "tap_action": {
+            "action": "call-service",
+            "service": f"{DOMAIN}.report_false_positive",
+            "service_data": {"person_id": person},
+        },
+    }
+
+
 # ── Card builders ───────────────────────────────────────────────────────
 
 
@@ -144,7 +158,7 @@ def _person_card(
         "entities": status_entities,
     }
 
-    return {"type": "vertical-stack", "cards": [snapshot_card, status_card]}
+    return {"type": "vertical-stack", "cards": [snapshot_card, status_card, _false_positive_button(person)]}
 
 
 def _area_icon(area_name: str) -> str:

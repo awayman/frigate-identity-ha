@@ -65,3 +65,17 @@ update_child_safe_zones:
       required: false
       selector:
         object:
+
+report_false_positive:
+  name: Report false positive
+  description: >
+    Report a false-positive identification for a person. Publishes the latest
+    event context to the identity service via MQTT; the service removes the
+    associated embedding and publishes back a success or error notification.
+  fields:
+    person_id:
+      name: Person ID
+      description: Name of the person whose latest identification is a false positive.
+      required: true
+      selector:
+        text:
