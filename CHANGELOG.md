@@ -8,16 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- tests: add false-positive service helper coverage for payload formation and publish-failure notifications
 
 ### Changed
-- integration: refactor false-positive submit/ack logic into module-level helpers to improve reliability and testability
 
 ### Fixed
 
 ### Removed
 
 
+## [0.6.0] - 2026-04-04
+
+### Fixed
+- mqtt: harden false-positive submission flow and tests
 ## [0.5.32] - 2026-04-03
 
 ### Added
