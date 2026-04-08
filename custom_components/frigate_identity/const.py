@@ -10,6 +10,7 @@ CONF_AUTO_DASHBOARD = "auto_dashboard"
 CONF_DASHBOARD_REFRESH_TIME = "dashboard_refresh_time"
 CONF_DASHBOARD_NAME = "dashboard_name"
 CONF_DASHBOARD_PERSONS = "dashboard_persons"
+CONF_PERSON_ORDER = "person_order"
 CONF_SERVICE_HEALTH_CHECK_INTERVAL = "service_health_check_interval"
 
 # ── Defaults ────────────────────────────────────────────────────────────────

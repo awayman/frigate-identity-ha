@@ -40,6 +40,10 @@
         "data_description": {
           "dashboard_persons": "Select specific persons to display. Leave empty to show all persons (including new discoveries)."
         }
+      },
+      "person_order": {
+        "title": "Dashboard Person Order",
+        "description": "Set a display order for each tracked person. Lower numbers appear first. Leave unchanged to use YAML metadata order or alphabetical fallback."
       }
     },
     "error": {}

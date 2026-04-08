@@ -19,6 +19,7 @@ from .const import (
     CONF_DASHBOARD_PERSONS,
     CONF_DASHBOARD_REFRESH_TIME,
     CONF_MQTT_TOPIC_PREFIX,
+    CONF_PERSON_ORDER,
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_AUTO_DASHBOARD,
     DEFAULT_DASHBOARD_NAME,
@@ -29,6 +30,12 @@ from .const import (
     DOMAIN,
     SNAPSHOT_SOURCES,
 )
+from .dashboard import async_generate_dashboard
+
+
+def _slug(name: str) -> str:
+    """Return a lowercase underscore slug (mirrors person_registry._slug)."""
+    return name.lower().replace(" ", "_").replace("-", "_")
 
 
 class FrigateIdentityConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -89,15 +96,22 @@ class FrigateIdentityConfigFlow(ConfigFlow, domain=DOMAIN):
 class FrigateIdentityOptionsFlow(OptionsFlowWithConfigEntry):
     """Handle options flow for Frigate Identity."""
 
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialise options flow."""
+        super().__init__(config_entry)
+        self._main_options: dict[str, Any] = {}
+        self._person_names: list[str] = []
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Manage the main options, then chain to person order step."""
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            self._main_options = user_input
+            return await self.async_step_person_order()
 
         current = {**self.config_entry.data, **self.config_entry.options}
-        
+
         # Build person list from registry for multi-select
         person_names_dict = {}
         if DOMAIN in self.hass.data and "registry" in self.hass.data[DOMAIN]:
@@ -149,4 +163,65 @@ class FrigateIdentityOptionsFlow(OptionsFlowWithConfigEntry):
                     ): cv.multi_select(person_names_dict),
                 }
             ),
+        )
+
+    async def async_step_person_order(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure display order for each known person."""
+        registry = self.hass.data.get(DOMAIN, {}).get("registry")
+        self._person_names = sorted(registry.person_names) if registry else []
+
+        if user_input is not None or not self._person_names:
+            # Build person_order mapping from submitted form values
+            person_order: dict[str, int] = {}
+            if user_input and self._person_names:
+                for person_name in self._person_names:
+                    key = f"order_{_slug(person_name)}"
+                    if key in user_input:
+                        try:
+                            person_order[person_name] = int(user_input[key])
+                        except (ValueError, TypeError):
+                            pass
+
+            # Preserve ordering entries for persons not shown in the current form
+            existing_order: dict[str, int] = {
+                **self.config_entry.data,
+                **self.config_entry.options,
+            }.get(CONF_PERSON_ORDER, {}) or {}
+            merged_order = {**existing_order, **person_order}
+
+            combined = {**self._main_options, CONF_PERSON_ORDER: merged_order}
+
+            # Schedule dashboard regeneration with the new merged options
+            if registry is not None:
+                regen_config = {**self.config_entry.data, **combined}
+                self.hass.async_create_task(
+                    async_generate_dashboard(self.hass, registry, regen_config)
+                )
+
+            return self.async_create_entry(data=combined)
+
+        # Build current order for prefilling
+        current_order: dict[str, int] = {
+            **self.config_entry.data,
+            **self.config_entry.options,
+        }.get(CONF_PERSON_ORDER, {}) or {}
+
+        schema_dict: dict[Any, Any] = {}
+        for i, person_name in enumerate(self._person_names):
+            slug = _slug(person_name)
+            meta_order = registry.meta.get(person_name, {}).get("order") if registry else None
+            try:
+                default_val = int(meta_order) if meta_order is not None else i
+            except (ValueError, TypeError):
+                default_val = i
+            default_val = current_order.get(person_name, default_val)
+            schema_dict[vol.Optional(f"order_{slug}", default=default_val)] = vol.All(
+                vol.Coerce(int), vol.Range(min=0)
+            )
+
+        return self.async_show_form(
+            step_id="person_order",
+            data_schema=vol.Schema(schema_dict),
         )

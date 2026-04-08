@@ -1,4 +1,4 @@
-"""Dashboard generation for Frigate Identity.
+﻿"""Dashboard generation for Frigate Identity.
 
 Builds a Lovelace view and pushes it to HA's storage-mode dashboard.
 Automatically creates and maintains a dedicated dashboard for person tracking.
@@ -16,6 +16,7 @@ from homeassistant.helpers import area_registry as ar, entity_registry as er
 from .const import (
     CONF_DASHBOARD_NAME,
     CONF_DASHBOARD_PERSONS,
+    CONF_PERSON_ORDER,
     CONF_SNAPSHOT_SOURCE,
     DEFAULT_DASHBOARD_NAME,
     DEFAULT_DASHBOARD_PERSONS,
@@ -46,6 +47,30 @@ def _false_positive_button(person: str) -> dict[str, Any]:
             "service_data": {"person_id": person},
         },
     }
+
+
+# ── Sort key ────────────────────────────────────────────────────────────
+
+
+def _person_sort_key(
+    person_name: str,
+    person_order_map: dict[str, int],
+    registry: PersonRegistry,
+) -> tuple:
+    """Return sort tuple: (bucket, order, name_lower).
+
+    Bucket 0 = explicit entry.options order, 1 = YAML meta order, 2 = alpha.
+    """
+    explicit = person_order_map.get(person_name)
+    if explicit is not None:
+        return (0, explicit, person_name.lower())
+    meta_order = registry.meta.get(person_name, {}).get("order")
+    if meta_order is not None:
+        try:
+            return (1, int(meta_order), person_name.lower())
+        except (ValueError, TypeError):
+            pass
+    return (2, 0, person_name.lower())
 
 
 # ── Card builders ───────────────────────────────────────────────────────
@@ -85,6 +110,18 @@ def _resolve_entity_id(
     return candidates[0]
 
 
+def _person_header_card(person: str, location_entity: str) -> dict[str, Any]:
+    """Build a markdown header card showing person name and relative last-seen time."""
+    content = (
+        f"<h2>{person}</h2>\n"
+        f"Last seen: <ha-relative-time "
+        f"datetime=\"{{{{ state_attr('{location_entity}', 'last_seen') or "
+        f"states['{location_entity}'].last_changed }}}}\""
+        f"></ha-relative-time>"
+    )
+    return {"type": "markdown", "content": content}
+
+
 def _person_card(
     hass: HomeAssistant,
     person: str,
@@ -115,6 +152,8 @@ def _person_card(
         )
     else:
         snap_entity = _snapshot_entity_id(person, snapshot_source)
+
+    header_card = _person_header_card(person, location_entity)
 
     snapshot_card: dict[str, Any] = {
         "type": "picture-entity",
@@ -158,43 +197,10 @@ def _person_card(
         "entities": status_entities,
     }
 
-    return {"type": "vertical-stack", "cards": [snapshot_card, status_card, _false_positive_button(person)]}
-
-
-def _area_icon(area_name: str) -> str:
-    """Pick an icon for an area name."""
-    lower = area_name.lower()
-    if any(w in lower for w in ("yard", "garden", "outdoor", "outside", "back", "front")):
-        return "🌳"
-    if any(w in lower for w in ("entry", "door", "drive", "garage")):
-        return "🚗"
-    if any(w in lower for w in ("living", "lounge", "kitchen", "bed", "bath")):
-        return "🏡"
-    return "🏠"
-
-
-def _area_section(
-    hass: HomeAssistant,
-    area_name_str: str,
-    persons_in_area: list[str],
-    snapshot_source: str,
-    registry: PersonRegistry,
-) -> list[dict[str, Any]]:
-    """Build cards for one area section."""
-    icon = _area_icon(area_name_str)
-    cards: list[dict[str, Any]] = [
-        {"type": "markdown", "content": f"## {icon} {area_name_str}"}
-    ]
-
-    person_cards = [
-        _person_card(hass, p, snapshot_source, registry) for p in persons_in_area
-    ]
-    if len(person_cards) > 1:
-        cards.append({"type": "horizontal-stack", "cards": person_cards})
-    elif person_cards:
-        cards.append(person_cards[0])
-
-    return cards
+    return {
+        "type": "vertical-stack",
+        "cards": [header_card, snapshot_card, status_card, _false_positive_button(person)],
+    }
 
 
 # ── View builder ────────────────────────────────────────────────────────
@@ -206,9 +212,8 @@ def _build_view(
     snapshot_source: str,
     registry: PersonRegistry,
     dashboard_name: str,
-    area_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Build a complete Lovelace view dict."""
+    """Build a complete Lovelace view dict (flat per-person cards, no area grouping)."""
     service_status_entity = _resolve_entity_id(
         hass,
         domain="binary_sensor",
@@ -246,71 +251,16 @@ def _build_view(
         ],
     }
 
-    body_cards: list[dict[str, Any]] = []
-
-    if area_map:
-        # Group persons by area
-        person_area: dict[str, str] = {}
-        for person in persons:
-            meta = registry.meta.get(person, {})
-            cam = meta.get("camera", _slug(person))
-            person_area[person] = area_map.get(cam, "")
-
-        seen: set[str] = set()
-        ordered_areas: list[str] = []
-        for person in persons:
-            a = person_area[person]
-            if a and a not in seen:
-                seen.add(a)
-                ordered_areas.append(a)
-
-        for area in ordered_areas:
-            ppl = [p for p in persons if person_area[p] == area]
-            body_cards.extend(
-                _area_section(hass, area, ppl, snapshot_source, registry)
-            )
-
-        unassigned = [p for p in persons if not person_area[p]]
-        if unassigned:
-            body_cards.extend(
-                _area_section(hass, "Unassigned", unassigned, snapshot_source, registry)
-            )
-    else:
-        body_cards = [
-            _person_card(hass, p, snapshot_source, registry) for p in persons
-        ]
+    person_cards = [
+        _person_card(hass, p, snapshot_source, registry) for p in persons
+    ]
 
     return {
         "title": dashboard_name,
         "path": "frigate-identity",
         "icon": "mdi:account-search",
-        "cards": [banner_card, header_card, *body_cards, summary_card],
+        "cards": [banner_card, header_card, *person_cards, summary_card],
     }
-
-
-# ── Area map helpers ────────────────────────────────────────────────────
-
-
-async def _fetch_area_map(hass: HomeAssistant) -> dict[str, str]:
-    """Build a camera→area mapping from HA registries."""
-    result: dict[str, str] = {}
-    try:
-        ent_reg = er.async_get(hass)
-        a_reg = ar.async_get(hass)
-
-        for entry in ent_reg.entities.values():
-            if entry.domain != "camera":
-                continue
-            if entry.area_id:
-                area = a_reg.async_get_area(entry.area_id)
-                if area:
-                    # Strip "camera." prefix to get camera name
-                    cam_name = entry.entity_id.removeprefix("camera.")
-                    result[cam_name] = area.name
-    except Exception:  # noqa: BLE001
-        _LOGGER.debug("Could not fetch camera area assignments")
-
-    return result
 
 
 # ── Public API ──────────────────────────────────────────────────────────
@@ -326,65 +276,58 @@ async def async_generate_dashboard(
     Returns True on success, False on failure.
     """
     _LOGGER.debug("=== DASHBOARD GENERATION STARTED ===")
-    
-    # Apply person filter if configured
+
+    # ── Step 1: collect persons ─────────────────────────────────────────
     filter_persons = config.get(CONF_DASHBOARD_PERSONS, DEFAULT_DASHBOARD_PERSONS)
     if filter_persons:
-        # Non-empty list: show only selected persons that exist in registry
-        persons = [p for p in registry.person_names if p in filter_persons]
+        persons: list[str] = [p for p in registry.person_names if p in filter_persons]
         _LOGGER.debug(
-            "Applying person filter: %d selected, %d matched in registry",
+            "Collect: person filter applied — %d selected, %d matched in registry",
             len(filter_persons),
             len(persons),
         )
     else:
-        # Empty list (default): show all persons including new discoveries
-        persons = registry.person_names
-        _LOGGER.debug("No person filter applied; showing all persons")
-    
-    _LOGGER.debug("Persons for dashboard: %d - %s", len(persons), persons)
-    
+        persons = list(registry.person_names)
+        _LOGGER.debug("Collect: no person filter — %d persons from registry", len(persons))
+
+    # ── Step 2: filter unknown persons ─────────────────────────────────
+    before = len(persons)
+    persons = [p for p in persons if not p.lower().startswith("unknown")]
+    _LOGGER.debug(
+        "Filter: removed %d unknown persons → %d remaining",
+        before - len(persons),
+        len(persons),
+    )
+
     if not persons:
         _LOGGER.warning("No persons to display on dashboard; skipping generation")
-        if filter_persons:
-            _LOGGER.warning(
-                "Filter specified %d persons but none exist in registry",
-                len(filter_persons),
-            )
-        else:
-            _LOGGER.warning("Dashboard cannot be created without persons!")
         return False
 
+    # ── Step 3: sort persons ────────────────────────────────────────────
+    person_order_map: dict[str, int] = config.get(CONF_PERSON_ORDER, {}) or {}
+    persons = sorted(
+        persons,
+        key=lambda p: _person_sort_key(p, person_order_map, registry),
+    )
+    _LOGGER.debug("Sort: person_order_map=%s → sorted=%s", person_order_map, persons)
+
+    # ── Step 4: build view ──────────────────────────────────────────────
     snapshot_source = config.get(CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE)
     dashboard_name = str(
         config.get(CONF_DASHBOARD_NAME, DEFAULT_DASHBOARD_NAME)
     ).strip() or DEFAULT_DASHBOARD_NAME
-    _LOGGER.debug("Snapshot source: %s", snapshot_source)
+    _LOGGER.debug("Build: snapshot_source=%s, dashboard_name=%s", snapshot_source, dashboard_name)
 
-    # Merge camera_zones overrides with HA area assignments
-    ha_areas = await _fetch_area_map(hass)
-    area_map = {**ha_areas, **registry.camera_zones}
-    _LOGGER.debug("Area map loaded: %d areas", len(area_map) if area_map else 0)
+    view = _build_view(hass, persons, snapshot_source, registry, dashboard_name)
+    _LOGGER.debug("Build: view built with %d cards", len(view.get("cards", [])))
 
-    view = _build_view(
-        hass,
-        persons,
-        snapshot_source,
-        registry,
-        dashboard_name,
-        area_map or None,
-    )
-    _LOGGER.debug("Dashboard view built with %d cards", len(view.get("cards", [])))
-
-    # Push to Lovelace storage
+    # ── Step 5: push to Lovelace ────────────────────────────────────────
     _LOGGER.debug(
-        "Attempting to push dashboard: lovelace_available=%s, "
-        "persons=%d, snapshot_source=%s",
+        "Push: lovelace_available=%s, persons=%d, snapshot_source=%s",
         "lovelace" in hass.data,
         len(persons),
         snapshot_source,
     )
-    _LOGGER.debug("Available hass.data keys: %s", list(hass.data.keys()))
     try:
         lovelace_data = hass.data.get("lovelace")
         if not lovelace_data or not hasattr(lovelace_data, "dashboards"):
@@ -472,3 +415,5 @@ async def async_generate_dashboard(
             "This may indicate an API change in Home Assistant 2026."
         )
         return False
+
+
