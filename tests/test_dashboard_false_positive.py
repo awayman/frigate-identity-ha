@@ -196,11 +196,11 @@ class TestPersonCardIncludesButton(unittest.TestCase):
         ):
             return self.dash._person_card(hass, name, snapshot_source, registry)
 
-    def test_card_is_vertical_stack(self):
+    def test_card_is_single_wrapped_card(self):
         card = self._build_card()
-        self.assertEqual(card["type"], "vertical-stack")
+        self.assertEqual(card["type"], "custom:stack-in-card")
 
-    def test_vertical_stack_contains_button(self):
+    def test_stack_contains_button(self):
         card = self._build_card()
         types_in_stack = [c.get("type") for c in card["cards"]]
         self.assertIn("button", types_in_stack)

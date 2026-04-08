@@ -11,7 +11,7 @@ from typing import Any
 from homeassistant.components import frontend
 from homeassistant.components.lovelace.const import ConfigNotFound
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import area_registry as ar, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_DASHBOARD_NAME,
@@ -128,7 +128,7 @@ def _person_card(
     snapshot_source: str,
     registry: PersonRegistry,
 ) -> dict[str, Any]:
-    """Build a vertical-stack card for one person."""
+    """Build a single wrapped card for one person."""
     slug = _slug(person)
     location_entity = _resolve_entity_id(
         hass,
@@ -198,7 +198,8 @@ def _person_card(
     }
 
     return {
-        "type": "vertical-stack",
+        "type": "custom:stack-in-card",
+        "mode": "vertical",
         "cards": [header_card, snapshot_card, status_card, _false_positive_button(person)],
     }
 

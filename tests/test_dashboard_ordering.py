@@ -286,8 +286,8 @@ class TestPersonCardStructure(unittest.TestCase):
 
     # ── Card shape ──────────────────────────────────────────────────────
 
-    def test_is_vertical_stack(self) -> None:
-        self.assertEqual(self._build_card()["type"], "vertical-stack")
+    def test_is_single_wrapped_card(self) -> None:
+        self.assertEqual(self._build_card()["type"], "custom:stack-in-card")
 
     def test_has_four_sub_cards(self) -> None:
         """Order: header markdown, picture-entity, entities, button."""
@@ -363,11 +363,11 @@ class TestPersonCardStructure(unittest.TestCase):
 
     # ── Snapshot sources ─────────────────────────────────────────────────
 
-    def test_all_snapshot_sources_produce_vertical_stack(self) -> None:
+    def test_all_snapshot_sources_produce_wrapped_card(self) -> None:
         for source in ("mqtt", "frigate_api", "frigate_integration"):
             with self.subTest(source=source):
                 card = self._build_card(snapshot_source=source)
-                self.assertEqual(card["type"], "vertical-stack")
+                self.assertEqual(card["type"], "custom:stack-in-card")
 
 
 # ── Tests: _build_view flat layout ───────────────────────────────────────
@@ -408,10 +408,10 @@ class TestBuildViewFlatLayout(unittest.TestCase):
             view = self.dash._build_view(hass, ["Alice"], "mqtt", registry, "My Tracker")
         self.assertEqual(view["title"], "My Tracker")
 
-    def test_person_cards_are_vertical_stacks(self) -> None:
+    def test_person_cards_are_wrapped_cards(self) -> None:
         view = self._build_view_for(["Alice", "Bob"])
         person_cards = [
-            c for c in view["cards"] if c.get("type") == "vertical-stack"
+            c for c in view["cards"] if c.get("type") == "custom:stack-in-card"
         ]
         self.assertEqual(len(person_cards), 2)
 
@@ -424,8 +424,8 @@ class TestBuildViewFlatLayout(unittest.TestCase):
     def test_person_order_preserved_in_cards(self) -> None:
         """Persons appear in the order passed to _build_view."""
         view = self._build_view_for(["Bob", "Alice"])
-        person_cards = [c for c in view["cards"] if c.get("type") == "vertical-stack"]
-        # Each person card is a vertical-stack; header markdown contains the name
+        person_cards = [c for c in view["cards"] if c.get("type") == "custom:stack-in-card"]
+        # Each person card is wrapped; header markdown contains the name
         headers = [c["cards"][0]["content"] for c in person_cards]
         self.assertIn("Bob", headers[0])
         self.assertIn("Alice", headers[1])
@@ -464,7 +464,7 @@ class TestDashboardIntegration(unittest.TestCase):
         ):
             view = self.dash._build_view(hass, filtered, "mqtt", registry, "Kids")
 
-        person_cards = [c for c in view["cards"] if c.get("type") == "vertical-stack"]
+        person_cards = [c for c in view["cards"] if c.get("type") == "custom:stack-in-card"]
         card_names_in_headers = " ".join(c["cards"][0]["content"] for c in person_cards)
         self.assertNotIn("Unknown_abc", card_names_in_headers)
         self.assertIn("PersonA", card_names_in_headers)
@@ -491,7 +491,7 @@ class TestDashboardIntegration(unittest.TestCase):
         ):
             view = self.dash._build_view(hass, persons, "mqtt", registry, "Kids")
 
-        person_cards = [c for c in view["cards"] if c.get("type") == "vertical-stack"]
+        person_cards = [c for c in view["cards"] if c.get("type") == "custom:stack-in-card"]
         ordered_names = [c["cards"][0]["content"] for c in person_cards]
         self.assertIn("Bob", ordered_names[0])
         self.assertIn("Alice", ordered_names[1])
@@ -508,7 +508,7 @@ class TestDashboardIntegration(unittest.TestCase):
         ):
             view = self.dash._build_view(hass, ["PersonA", "PersonB"], "mqtt", registry, "Kids")
 
-        for card in [c for c in view["cards"] if c.get("type") == "vertical-stack"]:
+        for card in [c for c in view["cards"] if c.get("type") == "custom:stack-in-card"]:
             btn = card["cards"][3]
             self.assertEqual(btn["type"], "button")
             self.assertIn("report_false_positive", btn["tap_action"]["service"])
