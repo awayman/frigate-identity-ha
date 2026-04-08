@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.6.2] - 2026-04-08
+
+### Changed
+- dashboard: update card type to custom:stack-in-card and adjust tests accordingly
 ## [0.6.1] - 2026-04-08
 
 ### Added
