@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [0.7.0] - 2026-08-28
+
+### Added
+- mqtt: add Meshtastic geofence service flow
+- meshtastic: add configure_tracker_geofence service and tracker sensors
+### Fixed
+- address review feedback on geofence service and polygon editor card
+- meshtastic: fix sensor dispatch wiring, listener cleanup, and debug log privacy
+### Changed
+- Initial plan
 ## [0.6.2] - 2026-04-08
 
 ### Changed
