@@ -72,14 +72,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["registry"] = registry
 
     # ── Meshtastic tracker registry ─────────────────────────────────────
-    tracker_registry = TrackerRegistry()
+    tracker_registry = TrackerRegistry(hass)
     hass.data[DOMAIN]["tracker_registry"] = tracker_registry
+    await tracker_registry.async_load()
 
     # Load person metadata from HA person entities
     await registry.async_load_persons_from_ha()
 
     # ── Blueprint auto-deploy ───────────────────────────────────────────
     await hass.async_add_executor_job(_deploy_blueprints, hass)
+    await hass.async_add_executor_job(_deploy_frontend_assets, hass)
+    await _async_register_frontend_resources(hass)
 
     # ── Forward platforms ───────────────────────────────────────────────
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -492,6 +495,36 @@ def _build_false_positive_payload(
             "submitted_at": submitted_at_ms,
         }
     )
+
+
+def _deploy_frontend_assets(hass: HomeAssistant) -> None:
+    """Copy bundled frontend assets into Home Assistant's www directory."""
+    source_dir = os.path.join(os.path.dirname(__file__), "www")
+    if not os.path.isdir(source_dir):
+        return
+
+    target_dir = hass.config.path("www", DOMAIN)
+    os.makedirs(target_dir, exist_ok=True)
+
+    for name in os.listdir(source_dir):
+        source_path = os.path.join(source_dir, name)
+        target_path = os.path.join(target_dir, name)
+        if os.path.isfile(source_path):
+            shutil.copyfile(source_path, target_path)
+
+
+async def _async_register_frontend_resources(hass: HomeAssistant) -> None:
+    """Register bundled Lovelace card assets with the frontend when supported."""
+    resource_url = f"/local/{DOMAIN}/polygon-editor-card.js"
+    try:
+        from homeassistant.components import frontend
+
+        if hasattr(frontend, "add_extra_js_url"):
+            frontend.add_extra_js_url(hass, resource_url)
+        elif hasattr(frontend, "async_register_frontend_module"):
+            await frontend.async_register_frontend_module(hass, resource_url)
+    except Exception:  # noqa: BLE001
+        _LOGGER.debug("Unable to auto-register Frigate Identity frontend resources")
 
 
 async def _async_submit_false_positive(

@@ -186,6 +186,10 @@ data:
     - [40.7128, -74.0055]
   relay_entity: "switch.toy_relay"
   enable_beeper: true
+  buzzer_gpio: 0
+  warn_dist_approaching: 50
+  warn_dist_near: 20
+  warn_dist_critical: 5
 ```
 
 **Service parameters:**
@@ -197,7 +201,11 @@ data:
 | `polygon` | ✅ | List of `[lat, lon]` pairs — minimum 3 points |
 | `geofence_name` | No | Friendly name for the geofence (default: `<person>_geofence`) |
 | `relay_entity` | No | HA switch entity to associate with the relay output |
-| `enable_beeper` | No | Enable audible beeper when outside the geofence (default: `false`) |
+| `enable_beeper` | No | Enable audible beeper when outside the geofence (default: `true`) |
+| `buzzer_gpio` | No | External buzzer GPIO pin, or `0` for the built-in buzzer API |
+| `warn_dist_approaching` | No | Outer warning ring distance in metres (default: `50`) |
+| `warn_dist_near` | No | Medium warning ring distance in metres (default: `20`) |
+| `warn_dist_critical` | No | Inner warning ring distance in metres (default: `5`) |
 
 **Events fired:**
 
@@ -205,17 +213,22 @@ data:
 |---|---|
 | `frigate_identity.geofence_config_sent` | Config successfully sent to tracker |
 | `frigate_identity.geofence_config_error` | Polygon validation or send failure |
-| `frigate_identity.tracker_geofence_entry` | Tracker reports entering the geofence |
-| `frigate_identity.tracker_geofence_violation` | Tracker reports leaving the geofence |
+| `frigate_identity.tracker_entered_geofence` | Tracker reports entering the geofence |
+| `frigate_identity.tracker_exited_geofence` | Tracker reports leaving the geofence |
+| `frigate_identity.tracker_battery_low` | Tracker battery drops below 10% |
+| `frigate_identity.tracker_no_gps_fix` | Tracker reports that GPS fix is unavailable |
 
 **Sensors created per tracked person:**
 
 | Sensor | State |
 |---|---|
 | `sensor.frigate_identity_<person>_geofence_status` | `in_geofence` / `outside_geofence` / `unknown` |
-| `sensor.frigate_identity_<person>_battery` | Battery percent (0–100) |
+| `sensor.frigate_identity_<person>_distance_to_boundary` | Signed distance in metres (+ inside / - outside) |
+| `sensor.frigate_identity_<person>_beep_zone` | `SAFE`, `APPROACHING`, `NEAR`, `CRITICAL`, or `OUTSIDE` |
+| `sensor.frigate_identity_<person>_battery_percent` | Battery percent (0–100) |
 | `sensor.frigate_identity_<person>_last_position` | `lat,lon` string |
-| `sensor.frigate_identity_<person>_relay_state` | `enabled` / `disabled` |
+| `sensor.frigate_identity_<person>_relay_state` | `on` / `off` |
+| `sensor.frigate_identity_<person>_last_update` | Last tracker update timestamp |
 
 **Example automation using geofence events:**
 
@@ -224,7 +237,7 @@ automation:
   - alias: "Alert when child leaves yard"
     trigger:
       - platform: event
-        event_type: frigate_identity.tracker_geofence_violation
+        event_type: frigate_identity.tracker_exited_geofence
         event_data:
           person_name: "Alice"
     action:
@@ -232,6 +245,31 @@ automation:
         data:
           message: "Alice has left the yard!"
 ```
+
+### Lovelace Polygon Editor Card
+
+The integration also deploys a lightweight Lovelace resource at:
+
+`/local/frigate_identity/polygon-editor-card.js`
+
+Add it as a Lovelace resource if Home Assistant does not auto-load it, then use:
+
+```yaml
+type: custom:frigate-identity-polygon-editor
+title: "Alice's Geofence"
+tracker_id: "1234"
+person_name: "Alice"
+relay_entity: "switch.toy_relay"
+enable_beeper: true
+center_latitude: 40.7128
+center_longitude: -74.0060
+zoom: 18
+show_beeper_zones: true
+show_tracker_position: true
+show_distance_to_boundary: true
+```
+
+The card shows tracker status from the geofence sensors, lets you click to add polygon points, right-click to finish the polygon, and saves the result by calling `frigate_identity.configure_tracker_geofence`.
 
 ## Snapshot Sources
 

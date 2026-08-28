@@ -47,5 +47,43 @@
       }
     },
     "error": {}
+  },
+  "services": {
+    "configure_tracker_geofence": {
+      "name": "Configure tracker geofence",
+      "description": "Send a polygon geofence to a Meshtastic tracker and keep Frigate Identity tracker sensors in sync.",
+      "fields": {
+        "tracker_id": {
+          "name": "Tracker ID"
+        },
+        "person_name": {
+          "name": "Person name"
+        },
+        "geofence_name": {
+          "name": "Geofence name"
+        },
+        "polygon": {
+          "name": "Polygon"
+        },
+        "relay_entity": {
+          "name": "Relay entity"
+        },
+        "enable_beeper": {
+          "name": "Enable beeper"
+        },
+        "buzzer_gpio": {
+          "name": "Buzzer GPIO"
+        },
+        "warn_dist_approaching": {
+          "name": "Approaching distance"
+        },
+        "warn_dist_near": {
+          "name": "Near distance"
+        },
+        "warn_dist_critical": {
+          "name": "Critical distance"
+        }
+      }
+    }
   }
 }

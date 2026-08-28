@@ -127,3 +127,39 @@ configure_tracker_geofence:
       required: false
       selector:
         boolean:
+    buzzer_gpio:
+      name: Buzzer GPIO
+      description: Optional GPIO pin for an external buzzer. Use 0 for the built-in Meshtastic buzzer API.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 39
+          mode: box
+    warn_dist_approaching:
+      name: Approaching distance
+      description: Distance in metres for the outer beeper warning zone.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    warn_dist_near:
+      name: Near distance
+      description: Distance in metres for the medium beeper warning zone.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    warn_dist_critical:
+      name: Critical distance
+      description: Distance in metres for the innermost beeper warning zone.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
