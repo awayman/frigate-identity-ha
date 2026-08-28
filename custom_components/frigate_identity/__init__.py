@@ -38,6 +38,11 @@ from .const import (
     TOPIC_FALSE_POSITIVE_ACK,
 )
 from .dashboard import async_generate_dashboard
+from .meshtastic_geofence import (
+    CONFIGURE_TRACKER_GEOFENCE_SCHEMA,
+    TrackerRegistry,
+    async_handle_configure_tracker_geofence,
+)
 from .person_registry import PersonData, PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,6 +70,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # ── Person registry ─────────────────────────────────────────────────
     registry = PersonRegistry(hass)
     hass.data[DOMAIN]["registry"] = registry
+
+    # ── Meshtastic tracker registry ─────────────────────────────────────
+    tracker_registry = TrackerRegistry()
+    hass.data[DOMAIN]["tracker_registry"] = tracker_registry
 
     # Load person metadata from HA person entities
     await registry.async_load_persons_from_ha()
@@ -396,6 +405,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         schema=vol.Schema({vol.Required("person_id"): str}),
     )
 
+    # ── Service: configure_tracker_geofence ─────────────────────────────
+    async def _handle_configure_tracker_geofence(call: ServiceCall) -> None:
+        """Send a polygon geofence configuration to a Meshtastic tracker."""
+        await async_handle_configure_tracker_geofence(hass, call, tracker_registry)
+
+    hass.services.async_register(
+        DOMAIN,
+        "configure_tracker_geofence",
+        _handle_configure_tracker_geofence,
+        schema=CONFIGURE_TRACKER_GEOFENCE_SCHEMA,
+    )
+
     # Subscribe to ACK topic and surface result to operator as a notification
     @callback
     def _handle_false_positive_ack(msg: Any) -> None:
@@ -433,6 +454,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop("registry", None)
+        hass.data[DOMAIN].pop("tracker_registry", None)
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
         hass.services.async_remove(DOMAIN, "get_registry_status")
         hass.services.async_remove(DOMAIN, "set_debug_mode")
@@ -440,6 +462,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, "update_person_profile")
         hass.services.async_remove(DOMAIN, "update_child_safe_zones")
         hass.services.async_remove(DOMAIN, "report_false_positive")
+        hass.services.async_remove(DOMAIN, "configure_tracker_geofence")
     return unload_ok
 
 
