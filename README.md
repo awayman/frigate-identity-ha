@@ -157,7 +157,7 @@ The integration registers these Home Assistant services:
 | `frigate_identity.clear_embeddings` | Request full embedding-store clear in Frigate Identity Service |
 | `frigate_identity.update_person_profile` | Set child/adult status and safe zones for a person |
 | `frigate_identity.update_child_safe_zones` | Backward-compatible alias for safe-zones-only updates |
-```
+| `frigate_identity.configure_tracker_geofence` | Send a polygon geofence config to a Meshtastic tracker |
 
 Example service call from Developer Tools:
 
@@ -165,6 +165,72 @@ Example service call from Developer Tools:
 service: frigate_identity.clear_embeddings
 data:
   reason: manual reset from HA Developer Tools
+```
+
+### Meshtastic Tracker Geofence Service
+
+Configure a polygon geofence on a Meshtastic tracker device. Requires the
+[official Meshtastic Home Assistant integration](https://github.com/meshtastic/home-assistant)
+installed and a Meshtastic device added to HA.
+
+```yaml
+service: frigate_identity.configure_tracker_geofence
+data:
+  tracker_id: "1234"
+  person_name: "Alice"
+  geofence_name: "home_yard"
+  polygon:
+    - [40.7128, -74.0060]
+    - [40.7135, -74.0060]
+    - [40.7135, -74.0055]
+    - [40.7128, -74.0055]
+  relay_entity: "switch.toy_relay"
+  enable_beeper: true
+```
+
+**Service parameters:**
+
+| Parameter | Required | Description |
+|---|---|---|
+| `tracker_id` | ✅ | Meshtastic device ID of the tracker (e.g. `"1234"`) |
+| `person_name` | ✅ | Name of the person being tracked |
+| `polygon` | ✅ | List of `[lat, lon]` pairs — minimum 3 points |
+| `geofence_name` | No | Friendly name for the geofence (default: `<person>_geofence`) |
+| `relay_entity` | No | HA switch entity to associate with the relay output |
+| `enable_beeper` | No | Enable audible beeper when outside the geofence (default: `false`) |
+
+**Events fired:**
+
+| Event | Fired when |
+|---|---|
+| `frigate_identity.geofence_config_sent` | Config successfully sent to tracker |
+| `frigate_identity.geofence_config_error` | Polygon validation or send failure |
+| `frigate_identity.tracker_geofence_entry` | Tracker reports entering the geofence |
+| `frigate_identity.tracker_geofence_violation` | Tracker reports leaving the geofence |
+
+**Sensors created per tracked person:**
+
+| Sensor | State |
+|---|---|
+| `sensor.frigate_identity_<person>_geofence_status` | `in_geofence` / `outside_geofence` / `unknown` |
+| `sensor.frigate_identity_<person>_battery` | Battery percent (0–100) |
+| `sensor.frigate_identity_<person>_last_position` | `lat,lon` string |
+| `sensor.frigate_identity_<person>_relay_state` | `enabled` / `disabled` |
+
+**Example automation using geofence events:**
+
+```yaml
+automation:
+  - alias: "Alert when child leaves yard"
+    trigger:
+      - platform: event
+        event_type: frigate_identity.tracker_geofence_violation
+        event_data:
+          person_name: "Alice"
+    action:
+      - service: notify.mobile_app_phone
+        data:
+          message: "Alice has left the yard!"
 ```
 
 ## Snapshot Sources

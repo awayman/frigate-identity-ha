@@ -29,6 +29,7 @@ from .const import (
     TOPIC_PERSON_WILDCARD,
     TOPIC_SNAPSHOTS_WILDCARD,
 )
+from .meshtastic_geofence import TrackerRegistry, async_setup_tracker_sensors
 from .person_registry import PersonData, PersonRegistry
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,6 +98,11 @@ async def async_setup_entry(
 
     # Create entities for persons already known from persons.yaml
     _on_persons_changed()
+
+    # ── Meshtastic tracker sensors ───────────────────────────────────────
+    tracker_registry: TrackerRegistry = hass.data[DOMAIN].get("tracker_registry")
+    if tracker_registry is not None:
+        await async_setup_tracker_sensors(hass, tracker_registry, async_add_entities)
 
 
 # ╭───────────────────────────────────────────────────────────────────────╮

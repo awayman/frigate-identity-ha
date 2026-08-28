@@ -79,3 +79,51 @@ report_false_positive:
       required: true
       selector:
         text:
+
+configure_tracker_geofence:
+  name: Configure tracker geofence
+  description: >
+    Send a polygon-based geofence configuration to a Meshtastic tracker device
+    via the official Meshtastic Home Assistant integration. The tracker will
+    monitor the configured zone locally and report its status back to HA.
+  fields:
+    tracker_id:
+      name: Tracker ID
+      description: Meshtastic device ID of the tracker (e.g. "1234").
+      required: true
+      selector:
+        text:
+    person_name:
+      name: Person name
+      description: Name of the person being tracked (must match a Frigate Identity person).
+      required: true
+      selector:
+        text:
+    polygon:
+      name: Polygon
+      description: >
+        List of [latitude, longitude] coordinate pairs defining the geofence
+        boundary (minimum 3 points). Example:
+        [[40.7128, -74.0060], [40.7135, -74.0060], [40.7135, -74.0055]].
+      required: true
+      selector:
+        object:
+    geofence_name:
+      name: Geofence name
+      description: Optional friendly name for this geofence (e.g. "home_yard").
+      required: false
+      selector:
+        text:
+    relay_entity:
+      name: Relay entity
+      description: Optional HA switch entity ID for relay feedback (e.g. "switch.toy_relay").
+      required: false
+      selector:
+        entity:
+          domain: switch
+    enable_beeper:
+      name: Enable beeper
+      description: Enable or disable the audible beeper on the tracker when outside the geofence.
+      required: false
+      selector:
+        boolean:
