@@ -9,7 +9,6 @@ import types
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODULE_DIR = REPO_ROOT / "custom_components" / "frigate_identity"
 
@@ -41,9 +40,16 @@ def _stub_dependencies() -> None:
     ha_root = types.ModuleType("homeassistant")
     ha_components = types.ModuleType("homeassistant.components")
     ha_mqtt = types.ModuleType("homeassistant.components.mqtt")
+    ha_frontend = types.ModuleType("homeassistant.components.frontend")
+    ha_lovelace = types.ModuleType("homeassistant.components.lovelace")
+    ha_lovelace_const = types.ModuleType("homeassistant.components.lovelace.const")
     ha_mqtt.async_publish = AsyncMock()
     ha_mqtt.async_subscribe = AsyncMock()
     ha_components.mqtt = ha_mqtt
+    ha_components.frontend = ha_frontend
+    ha_components.lovelace = ha_lovelace
+    ha_lovelace.const = ha_lovelace_const
+    ha_lovelace_const.ConfigNotFound = Exception
 
     ha_config_entries = types.ModuleType("homeassistant.config_entries")
     ha_config_entries.ConfigEntry = object
@@ -69,22 +75,31 @@ def _stub_dependencies() -> None:
     ha_cv = types.ModuleType("homeassistant.helpers.config_validation")
     ha_cv.ensure_list = lambda value: value
     ha_event = types.ModuleType("homeassistant.helpers.event")
+    ha_entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     ha_event.async_call_later = lambda *_a, **_k: None
     ha_event.async_track_time_change = lambda *_a, **_k: None
     ha_event.async_track_time_interval = lambda *_a, **_k: None
+    ha_entity_registry.async_get = lambda _hass: types.SimpleNamespace(
+        async_get_entity_id=lambda *_a, **_k: None
+    )
 
     ha_root.components = ha_components
     ha_root.helpers = ha_helpers
+    ha_helpers.entity_registry = ha_entity_registry
 
     sys.modules["homeassistant"] = ha_root
     sys.modules["homeassistant.components"] = ha_components
     sys.modules["homeassistant.components.mqtt"] = ha_mqtt
+    sys.modules["homeassistant.components.frontend"] = ha_frontend
+    sys.modules["homeassistant.components.lovelace"] = ha_lovelace
+    sys.modules["homeassistant.components.lovelace.const"] = ha_lovelace_const
     sys.modules["homeassistant.config_entries"] = ha_config_entries
     sys.modules["homeassistant.const"] = ha_const
     sys.modules["homeassistant.core"] = ha_core
     sys.modules["homeassistant.helpers"] = ha_helpers
     sys.modules["homeassistant.helpers.config_validation"] = ha_cv
     sys.modules["homeassistant.helpers.event"] = ha_event
+    sys.modules["homeassistant.helpers.entity_registry"] = ha_entity_registry
 
     # Stub sibling modules imported by __init__.py but not exercised in these tests.
     dash_mod = types.ModuleType("custom_components.frigate_identity.dashboard")
