@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import homeassistant.helpers.config_validation as cv
@@ -226,7 +227,11 @@ async def async_handle_configure_tracker_geofence(
         )
 
     # ── Send via Meshtastic HA integration ───────────────────────────────
-    _LOGGER.debug("Sending geofence config to tracker %s: %s", tracker_id, payload_json)
+    _LOGGER.debug(
+        "Sending geofence config to tracker %s (%d bytes)",
+        tracker_id,
+        len(payload_json.encode()),
+    )
 
     try:
         await hass.services.async_call(
@@ -306,7 +311,6 @@ class TrackerRegistry:
 
     def remove_listener(self, listener: Any) -> None:
         """Remove a registration-change listener."""
-        self._listeners.discard(listener) if hasattr(self._listeners, "discard") else None
         try:
             self._listeners.remove(listener)
         except ValueError:
@@ -325,7 +329,7 @@ async def async_setup_tracker_sensors(
     hass: HomeAssistant,
     tracker_registry: TrackerRegistry,
     async_add_entities: AddEntitiesCallback,
-) -> None:
+) -> Callable[[], None]:
     """Set up tracker status sensors and subscribe to Meshtastic status events.
 
     Called from sensor.py's async_setup_entry so the sensors live on the
@@ -334,6 +338,12 @@ async def async_setup_tracker_sensors(
     # Track which (tracker_id, person_name) tuples we have already created sensors for
     tracked: set[str] = set()
     _pending_status: dict[str, dict[str, Any]] = {}
+
+    # Sensor lookup for status dispatch
+    _geofence_sensors: dict[str, FrigateIdentityTrackerGeofenceStatusSensor] = {}
+    _battery_sensors: dict[str, FrigateIdentityTrackerBatterySensor] = {}
+    _position_sensors: dict[str, FrigateIdentityTrackerPositionSensor] = {}
+    _relay_sensors: dict[str, FrigateIdentityTrackerRelaySensor] = {}
 
     def _create_sensors_for_tracker(tracker_id: str, person_name: str) -> None:
         """Create the four tracker sensors if not yet present."""
@@ -347,6 +357,11 @@ async def async_setup_tracker_sensors(
         battery_sensor = FrigateIdentityTrackerBatterySensor(tracker_id, person_name)
         position_sensor = FrigateIdentityTrackerPositionSensor(tracker_id, person_name)
         relay_sensor = FrigateIdentityTrackerRelaySensor(tracker_id, person_name)
+
+        _geofence_sensors[tracker_id] = geofence_sensor
+        _battery_sensors[tracker_id] = battery_sensor
+        _position_sensors[tracker_id] = position_sensor
+        _relay_sensors[tracker_id] = relay_sensor
 
         async_add_entities(
             [geofence_sensor, battery_sensor, position_sensor, relay_sensor]
@@ -372,12 +387,6 @@ async def async_setup_tracker_sensors(
         person = tracker_registry.get_person(tid)
         if person:
             _create_sensors_for_tracker(tid, person)
-
-    # Sensor lookup for status dispatch
-    _geofence_sensors: dict[str, FrigateIdentityTrackerGeofenceStatusSensor] = {}
-    _battery_sensors: dict[str, FrigateIdentityTrackerBatterySensor] = {}
-    _position_sensors: dict[str, FrigateIdentityTrackerPositionSensor] = {}
-    _relay_sensors: dict[str, FrigateIdentityTrackerRelaySensor] = {}
 
     @callback
     def _on_meshtastic_message(event: Event) -> None:
@@ -454,7 +463,13 @@ async def async_setup_tracker_sensors(
                 },
             )
 
-    hass.bus.async_listen(MESHTASTIC_EVENT_MESSAGE, _on_meshtastic_message)
+    unsub_bus = hass.bus.async_listen(MESHTASTIC_EVENT_MESSAGE, _on_meshtastic_message)
+
+    def _cleanup() -> None:
+        unsub_bus()
+        tracker_registry.remove_listener(_create_sensors_for_tracker)
+
+    return _cleanup
 
 
 # ── Sensor implementations ────────────────────────────────────────────────────

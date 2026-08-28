@@ -454,6 +454,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop("registry", None)
+        hass.data[DOMAIN].pop("tracker_registry", None)
         hass.services.async_remove(DOMAIN, "regenerate_dashboard")
         hass.services.async_remove(DOMAIN, "get_registry_status")
         hass.services.async_remove(DOMAIN, "set_debug_mode")

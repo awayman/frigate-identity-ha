@@ -102,7 +102,10 @@ async def async_setup_entry(
     # ── Meshtastic tracker sensors ───────────────────────────────────────
     tracker_registry: TrackerRegistry = hass.data[DOMAIN].get("tracker_registry")
     if tracker_registry is not None:
-        await async_setup_tracker_sensors(hass, tracker_registry, async_add_entities)
+        cleanup = await async_setup_tracker_sensors(
+            hass, tracker_registry, async_add_entities
+        )
+        config_entry.async_on_unload(cleanup)
 
 
 # ╭───────────────────────────────────────────────────────────────────────╮
