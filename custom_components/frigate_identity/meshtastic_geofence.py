@@ -199,7 +199,7 @@ def _validate_polygon(polygon: list[list[float]]) -> str | None:
     segment_count = len(normalized)
     for index in range(segment_count):
         if normalized[index] == normalized[(index + 1) % segment_count]:
-            return "Polygon is self-intersecting"
+            return "Polygon has consecutive duplicate points"
 
     segments = [
         (normalized[index], normalized[(index + 1) % segment_count])
@@ -530,7 +530,12 @@ async def async_handle_configure_tracker_geofence(
     """Handle the configure_tracker_geofence service call."""
     tracker_id = str(call.data["tracker_id"])
     person_name = str(call.data["person_name"])
-    polygon = _normalize_polygon(call.data["polygon"])
+    try:
+        polygon = _normalize_polygon(call.data["polygon"])
+    except (TypeError, ValueError) as exc:
+        message = f"Invalid polygon coordinates: {exc}"
+        _fire_config_error(hass, tracker_id, person_name, message)
+        raise HomeAssistantError(message) from exc
     validation_error = _validate_polygon(polygon)
     if validation_error:
         _fire_config_error(hass, tracker_id, person_name, validation_error)

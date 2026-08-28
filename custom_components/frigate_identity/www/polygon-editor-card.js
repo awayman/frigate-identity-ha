@@ -55,8 +55,8 @@
       return `sensor.frigate_identity_${this._slug(this._config.person_name)}_${suffix}`;
     }
 
-    _entityState(entityId) {
-      return this._hass?.states?.[entityId];
+    _entityState(suffix) {
+      return this._hass?.states?.[this._entityId(suffix)];
     }
 
     _syncFromEntities() {

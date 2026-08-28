@@ -510,7 +510,10 @@ def _deploy_frontend_assets(hass: HomeAssistant) -> None:
         source_path = os.path.join(source_dir, name)
         target_path = os.path.join(target_dir, name)
         if os.path.isfile(source_path):
-            shutil.copyfile(source_path, target_path)
+            try:
+                shutil.copyfile(source_path, target_path)
+            except OSError:
+                _LOGGER.exception("Failed to deploy frontend asset %s", name)
 
 
 async def _async_register_frontend_resources(hass: HomeAssistant) -> None:
